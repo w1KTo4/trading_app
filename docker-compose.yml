@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: trading-postgres
+    environment:
+      POSTGRES_DB: tradingdb
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: trading
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+    container_name: trading-backend
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tradingdb
+      SPRING_DATASOURCE_USERNAME: trading
+      SPRING_DATASOURCE_PASSWORD: trading
+      JWT_SECRET: super-secret-jwt-key-change-in-production-123456
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8080
+    container_name: trading-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
