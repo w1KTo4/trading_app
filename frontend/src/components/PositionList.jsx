@@ -1,3 +1,5 @@
+import { formatUsd } from '../utils/formatters';
+
 function PositionList({ positions = [] }) {
   return (
     <div className="card">
@@ -7,10 +9,10 @@ function PositionList({ positions = [] }) {
           <tr>
             <th>Symbol</th>
             <th>Ilosc</th>
-            <th>Srednia</th>
-            <th>Aktualna</th>
-            <th>Unrealized P&L</th>
-            <th>Realized P&L</th>
+            <th>Srednia (USD)</th>
+            <th>Aktualna (USD)</th>
+            <th>Unrealized P&L (USD)</th>
+            <th>Realized P&L (USD)</th>
           </tr>
         </thead>
         <tbody>
@@ -23,13 +25,13 @@ function PositionList({ positions = [] }) {
             <tr key={position.symbol}>
               <td>{position.symbol}</td>
               <td>{Number(position.quantity).toFixed(4)}</td>
-              <td>{Number(position.averagePrice).toFixed(4)}</td>
-              <td>{Number(position.currentPrice).toFixed(4)}</td>
+              <td>{formatUsd(position.averagePrice, 4)}</td>
+              <td>{formatUsd(position.currentPrice, 4)}</td>
               <td className={Number(position.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                {Number(position.unrealizedPnl).toFixed(2)}
+                {formatUsd(position.unrealizedPnl, 2)}
               </td>
               <td className={Number(position.realizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                {Number(position.realizedPnl).toFixed(2)}
+                {formatUsd(position.realizedPnl, 2)}
               </td>
             </tr>
           ))}

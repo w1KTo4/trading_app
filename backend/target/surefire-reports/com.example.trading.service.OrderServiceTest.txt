@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.example.trading.service.OrderServiceTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.195 s -- in com.example.trading.service.OrderServiceTest
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.211 s -- in com.example.trading.service.OrderServiceTest

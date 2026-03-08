@@ -6,22 +6,43 @@ import { apiBaseUrl } from '../services/api';
 const WebSocketContext = createContext(null);
 
 const resolveWsUrl = () => {
+  const normalizeForSockJs = (url = '') => {
+    const trimmed = String(url).trim().replace(/\/+$/, '');
+    if (!trimmed) {
+      return '';
+    }
+
+    let normalized = trimmed;
+    if (normalized.startsWith('wss://')) {
+      normalized = normalized.replace('wss://', 'https://');
+    } else if (normalized.startsWith('ws://')) {
+      normalized = normalized.replace('ws://', 'http://');
+    }
+
+    if (normalized.endsWith('/api')) {
+      normalized = normalized.slice(0, -4);
+    }
+
+    return normalized;
+  };
+
   const direct =
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL) ||
     localStorage.getItem('wsUrl');
 
   if (direct) {
-    return direct;
+    const normalizedDirect = normalizeForSockJs(direct);
+    if (normalizedDirect.endsWith('/ws')) {
+      return normalizedDirect;
+    }
+    return `${normalizedDirect}/ws`;
   }
 
-  const base = apiBaseUrl.replace(/\/$/, '');
-  if (base.startsWith('https://')) {
-    return `${base.replace('https://', 'wss://')}/ws`;
+  const base = normalizeForSockJs(apiBaseUrl);
+  if (base.startsWith('https://') || base.startsWith('http://')) {
+    return `${base}/ws`;
   }
-  if (base.startsWith('http://')) {
-    return `${base.replace('http://', 'ws://')}/ws`;
-  }
-  return 'ws://localhost:8080/ws';
+  return 'http://localhost:8080/ws';
 };
 
 export function WebSocketProvider({ children }) {
@@ -32,16 +53,11 @@ export function WebSocketProvider({ children }) {
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     const email = localStorage.getItem('userEmail');
-    if (!token) {
-      return undefined;
-    }
 
     const client = new Client({
       reconnectDelay: 3000,
       webSocketFactory: () => new SockJS(resolveWsUrl()),
-      connectHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
+      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
       onConnect: () => {
         setConnected(true);
 
@@ -64,6 +80,8 @@ export function WebSocketProvider({ children }) {
       },
       onDisconnect: () => setConnected(false),
       onStompError: () => setConnected(false),
+      onWebSocketError: () => setConnected(false),
+      onWebSocketClose: () => setConnected(false),
     });
 
     client.activate();

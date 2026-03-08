@@ -1,7 +1,7 @@
 :root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #0f172a;
-  background: #f8fafc;
+  font-family: "Manrope", "Segoe UI", Tahoma, sans-serif;
+  color: #dde8f8;
+  background: #070d1a;
 }
 
 * {
@@ -11,11 +11,15 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(120deg, #dbeafe 0%, #f8fafc 40%, #ecfeff 100%);
+  background:
+    radial-gradient(circle at 6% 0%, rgba(249, 115, 22, 0.12), transparent 33%),
+    radial-gradient(circle at 88% 2%, rgba(56, 189, 248, 0.12), transparent 32%),
+    linear-gradient(145deg, #070d1a 0%, #0c1324 58%, #111c31 100%);
+  color: #dde8f8;
 }
 
 a {
-  color: #0f766e;
+  color: #f97316;
   text-decoration: none;
 }
 

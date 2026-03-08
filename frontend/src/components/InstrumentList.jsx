@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useWebSocketData } from '../ws/WebSocketProvider';
+import { formatUsd } from '../utils/formatters';
 
 function InstrumentList({ instruments = [] }) {
   const { latestPrices } = useWebSocketData();
@@ -13,7 +14,7 @@ function InstrumentList({ instruments = [] }) {
             <th>Symbol</th>
             <th>Nazwa</th>
             <th>Typ</th>
-            <th>Cena</th>
+            <th>Cena (USD)</th>
             <th></th>
           </tr>
         </thead>
@@ -25,7 +26,7 @@ function InstrumentList({ instruments = [] }) {
                 <td>{item.symbol}</td>
                 <td>{item.name}</td>
                 <td>{item.type}</td>
-                <td>{Number(live ?? item.lastPrice).toFixed(4)}</td>
+                <td>{formatUsd(live ?? item.lastPrice, 4)}</td>
                 <td>
                   <Link className="button ghost" to={`/instrument/${item.symbol}`}>
                     Szczegoly

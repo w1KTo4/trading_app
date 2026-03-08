@@ -1,5 +1,6 @@
 package com.example.trading.controller;
 
+import com.example.trading.dto.CandleDto;
 import com.example.trading.dto.InstrumentDto;
 import com.example.trading.dto.PriceTickDto;
 import com.example.trading.service.InstrumentService;
@@ -34,6 +35,13 @@ public class InstrumentController {
     public ResponseEntity<List<PriceTickDto>> getRecentPrices(@PathVariable String symbol,
                                                                @RequestParam(defaultValue = "50") int limit) {
         return ResponseEntity.ok(instrumentService.getRecentPrices(symbol, limit));
+    }
+
+    @GetMapping("/instruments/{symbol}/candles")
+    public ResponseEntity<List<CandleDto>> getCandles(@PathVariable String symbol,
+                                                       @RequestParam(defaultValue = "15m") String timeframe,
+                                                       @RequestParam(defaultValue = "250") int limit) {
+        return ResponseEntity.ok(instrumentService.getCandles(symbol, timeframe, limit));
     }
 
     @PostMapping("/admin/instruments")

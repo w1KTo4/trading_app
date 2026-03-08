@@ -29,7 +29,12 @@ public class MarginService {
     public BigDecimal calculateRequiredMargin(Instrument instrument, BigDecimal quantity, BigDecimal executionPrice) {
         BigDecimal notional = quantity.abs().multiply(executionPrice.abs());
         int leverage = 1;
-        if (instrument.getType() == InstrumentType.CFD || instrument.getType() == InstrumentType.FOREX || instrument.getType() == InstrumentType.METAL) {
+        if (instrument.getType() == InstrumentType.CFD
+                || instrument.getType() == InstrumentType.FOREX
+                || instrument.getType() == InstrumentType.METAL
+                || instrument.getType() == InstrumentType.INDEX
+                || instrument.getType() == InstrumentType.CRYPTO
+                || instrument.getType() == InstrumentType.COMMODITY) {
             leverage = Math.max(1, instrument.getLeverage());
         }
         return notional.divide(BigDecimal.valueOf(leverage), 6, RoundingMode.HALF_UP);

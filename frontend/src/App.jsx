@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import './App.css';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -14,13 +14,17 @@ function Layout({ email, onLogout, children }) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <h1>Paper Trading MVP</h1>
+        <div className="brand">
+          <h1>Trading Station</h1>
           <p className="muted">WS: {connected ? 'online' : 'offline'}</p>
         </div>
         <nav className="nav">
-          <Link to="/dashboard">Dashboard</Link>
-          <Link to="/market">Rynek</Link>
+          <NavLink to="/dashboard" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
+            Terminal
+          </NavLink>
+          <NavLink to="/market" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
+            Rynek
+          </NavLink>
           <span>{email}</span>
           <button className="button ghost" onClick={onLogout}>
             Wyloguj
