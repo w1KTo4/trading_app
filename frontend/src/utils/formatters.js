@@ -24,3 +24,11 @@ export const formatUsd = (value, digits = 2) => {
   }
   return getUsdFormatter(digits).format(numeric);
 };
+
+export const formatPercent = (value, digits = 2) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '0.00%';
+  }
+  return `${numeric.toFixed(digits)}%`;
+};

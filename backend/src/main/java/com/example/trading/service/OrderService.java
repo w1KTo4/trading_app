@@ -2,10 +2,12 @@ package com.example.trading.service;
 
 import com.example.trading.dto.OrderRequestDto;
 import com.example.trading.dto.OrderResponseDto;
+import com.example.trading.dto.TradeResponseDto;
 import com.example.trading.entity.*;
 import com.example.trading.repository.AccountRepository;
 import com.example.trading.repository.InstrumentRepository;
 import com.example.trading.repository.OrderRepository;
+import com.example.trading.repository.TradeRepository;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,7 @@ import java.util.NoSuchElementException;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final TradeRepository tradeRepository;
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
     private final MarketSimulatorService marketSimulatorService;
@@ -29,6 +32,7 @@ public class OrderService {
     private final SimpMessagingTemplate messagingTemplate;
 
     public OrderService(OrderRepository orderRepository,
+                        TradeRepository tradeRepository,
                         AccountRepository accountRepository,
                         InstrumentRepository instrumentRepository,
                         MarketSimulatorService marketSimulatorService,
@@ -37,6 +41,7 @@ public class OrderService {
                         PortfolioService portfolioService,
                         SimpMessagingTemplate messagingTemplate) {
         this.orderRepository = orderRepository;
+        this.tradeRepository = tradeRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
         this.marketSimulatorService = marketSimulatorService;
@@ -122,6 +127,21 @@ public class OrderService {
         return portfolioService.getPortfolioSummary(accountId);
     }
 
+    @Transactional(readOnly = true)
+    public List<TradeResponseDto> getTradesByAccount(Long accountId, String requesterEmail) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NoSuchElementException("Account not found"));
+
+        if (!account.getUser().getEmail().equalsIgnoreCase(requesterEmail)) {
+            throw new IllegalStateException("Access denied for account");
+        }
+
+        return tradeRepository.findByAccountIdOrderByExecutedAtDesc(accountId)
+                .stream()
+                .map(this::toTradeDto)
+                .toList();
+    }
+
     private void validateOrderInput(OrderRequestDto dto) {
         if (dto.getType() == OrderType.LIMIT && dto.getLimitPrice() == null) {
             throw new IllegalArgumentException("Limit price is required for LIMIT order");
@@ -155,5 +175,18 @@ public class OrderService {
         payload.put("filledPrice", order.getFilledPrice());
         messagingTemplate.convertAndSendToUser(email, "/queue/orders", payload);
         messagingTemplate.convertAndSend("/topic/orders/" + email, payload);
+    }
+
+    private TradeResponseDto toTradeDto(Trade trade) {
+        return new TradeResponseDto(
+                trade.getId(),
+                trade.getOrder().getId(),
+                trade.getInstrument().getSymbol(),
+                trade.getSide(),
+                trade.getQuantity(),
+                trade.getPrice(),
+                trade.getRealizedPnl(),
+                trade.getExecutedAt()
+        );
     }
 }
