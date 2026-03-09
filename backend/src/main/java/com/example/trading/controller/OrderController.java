@@ -2,6 +2,7 @@ package com.example.trading.controller;
 
 import com.example.trading.dto.OrderRequestDto;
 import com.example.trading.dto.OrderResponseDto;
+import com.example.trading.dto.TradeResponseDto;
 import com.example.trading.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -37,5 +38,11 @@ public class OrderController {
     public ResponseEntity<Map<String, Object>> portfolio(@PathVariable Long id,
                                                          Authentication authentication) {
         return ResponseEntity.ok(orderService.getPortfolio(id, authentication.getName()));
+    }
+
+    @GetMapping("/accounts/{id}/trades")
+    public ResponseEntity<List<TradeResponseDto>> accountTrades(@PathVariable Long id,
+                                                                Authentication authentication) {
+        return ResponseEntity.ok(orderService.getTradesByAccount(id, authentication.getName()));
     }
 }

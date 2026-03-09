@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Market from './pages/Market';
+import Portfolio from './pages/Portfolio';
 import Instrument from './pages/Instrument';
 import { WebSocketProvider, useWebSocketData } from './ws/WebSocketProvider';
 
@@ -24,6 +25,9 @@ function Layout({ email, onLogout, children }) {
           </NavLink>
           <NavLink to="/market" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
             Rynek
+          </NavLink>
+          <NavLink to="/portfolio" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
+            Portfolio
           </NavLink>
           <span>{email}</span>
           <button className="button ghost" onClick={onLogout}>
@@ -98,6 +102,17 @@ function App() {
               <ProtectedRoute token={token}>
                 <Layout email={email} onLogout={onLogout}>
                   <Market />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/portfolio"
+            element={
+              <ProtectedRoute token={token}>
+                <Layout email={email} onLogout={onLogout}>
+                  <Portfolio accountId={accountId} />
                 </Layout>
               </ProtectedRoute>
             }
