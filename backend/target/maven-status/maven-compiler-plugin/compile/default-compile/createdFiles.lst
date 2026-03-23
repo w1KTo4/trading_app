@@ -17,6 +17,7 @@ com\example\trading\dto\OrderResponseDto.class
 com\example\trading\repository\PositionRepository.class
 com\example\trading\dto\UserProfileDto.class
 com\example\trading\entity\Position.class
+com\example\trading\dto\TradeResponseDto.class
 com\example\trading\repository\OrderRepository.class
 com\example\trading\controller\AdminController.class
 com\example\trading\service\AuthService.class

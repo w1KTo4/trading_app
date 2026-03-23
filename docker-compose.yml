@@ -1,24 +1,31 @@
 services:
-  postgres:
-    image: postgres:15
-    container_name: trading-postgres
+  mysql:
+    image: mysql:8.4
+    container_name: trading-mysql
     environment:
-      POSTGRES_DB: tradingdb
-      POSTGRES_USER: trading
-      POSTGRES_PASSWORD: trading
+      MYSQL_DATABASE: tradingdb
+      MYSQL_USER: trading
+      MYSQL_PASSWORD: trading
+      MYSQL_ROOT_PASSWORD: root
     ports:
-      - "5432:5432"
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
 
   backend:
     build:
       context: ./backend
     container_name: trading-backend
     depends_on:
-      - postgres
+      mysql:
+        condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tradingdb
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/tradingdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: trading
       SPRING_DATASOURCE_PASSWORD: trading
       JWT_SECRET: super-secret-jwt-key-change-in-production-123456
@@ -37,4 +44,4 @@ services:
       - "3000:80"
 
 volumes:
-  postgres_data:
+  mysql_data:
