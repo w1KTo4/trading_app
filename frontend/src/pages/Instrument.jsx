@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import api from '../services/api';
 import Chart from '../components/Chart';
 import OrderForm from '../components/OrderForm';
@@ -88,16 +88,37 @@ function Instrument({ accountId }) {
 
   return (
     <div className="stack">
-      <div className="card">
-        <h2>{instrument?.symbol || symbol}</h2>
-        <p>{instrument?.name}</p>
-        <p>
-          Cena live (USD): <strong>{formatUsd(currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}</strong>
-        </p>
+      <div className="card quick-actions-bar">
+        <div>
+          <h2>{instrument?.symbol || symbol}</h2>
+          <p className="muted">{instrument?.name || 'Widok instrumentu'}</p>
+          <p>
+            Cena live (USD): <strong>{formatUsd(currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}</strong>
+          </p>
+        </div>
+        <div className="quick-links">
+          <Link className="button ghost" to="/dashboard">
+            Wroc do terminala
+          </Link>
+          <Link className="button ghost" to="/portfolio">
+            Otworz portfolio
+          </Link>
+        </div>
       </div>
 
       <Chart candles={candles} symbol={symbol} timeframe={INSTRUMENT_TIMEFRAME} />
-      <OrderForm symbol={symbol} accountId={accountId} onOrderPlaced={(order) => setMessage(`Order #${order.id} ${order.status}`)} />
+      <OrderForm
+        symbol={symbol}
+        accountId={accountId}
+        lastPrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
+        onOrderPlaced={(order) =>
+          setMessage(
+            order.status === 'FILLED'
+              ? `Zlecenie #${order.id} wykonane po ${formatUsd(order.filledPrice ?? currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}.`
+              : `Zlecenie #${order.id} ${order.status}.`,
+          )
+        }
+      />
       {message && <p className="card">{message}</p>}
     </div>
   );

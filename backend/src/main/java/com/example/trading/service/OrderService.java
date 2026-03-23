@@ -66,7 +66,7 @@ public class OrderService {
         BigDecimal currentPrice = marketSimulatorService.getCurrentPrice(instrument.getSymbol())
                 .orElse(instrument.getLastPrice());
 
-        validateOrderInput(dto);
+        validateOrderInput(dto, currentPrice);
 
         BigDecimal marginReferencePrice = dto.getType() == OrderType.LIMIT ? dto.getLimitPrice() : currentPrice;
         BigDecimal requiredMargin = marginService.calculateRequiredMargin(instrument, dto.getQuantity(), marginReferencePrice);
@@ -142,12 +142,47 @@ public class OrderService {
                 .toList();
     }
 
-    private void validateOrderInput(OrderRequestDto dto) {
+    private void validateOrderInput(OrderRequestDto dto, BigDecimal currentPrice) {
+        if (dto.getQuantity() == null || dto.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than 0");
+        }
         if (dto.getType() == OrderType.LIMIT && dto.getLimitPrice() == null) {
             throw new IllegalArgumentException("Limit price is required for LIMIT order");
         }
         if (dto.getType() == OrderType.MARKET && dto.getLimitPrice() != null) {
             throw new IllegalArgumentException("Limit price must be null for MARKET order");
+        }
+        if (dto.getLimitPrice() != null && dto.getLimitPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Limit price must be greater than 0");
+        }
+        if (dto.getTakeProfit() != null && dto.getTakeProfit().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Take profit must be greater than 0");
+        }
+        if (dto.getStopLoss() != null && dto.getStopLoss().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Stop loss must be greater than 0");
+        }
+
+        BigDecimal referencePrice = dto.getType() == OrderType.LIMIT ? dto.getLimitPrice() : currentPrice;
+        if (referencePrice == null || referencePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Reference price is not available for order validation");
+        }
+
+        if (dto.getTakeProfit() != null) {
+            if (dto.getSide() == OrderSide.BUY && dto.getTakeProfit().compareTo(referencePrice) <= 0) {
+                throw new IllegalArgumentException("Take profit must be above entry price for BUY orders");
+            }
+            if (dto.getSide() == OrderSide.SELL && dto.getTakeProfit().compareTo(referencePrice) >= 0) {
+                throw new IllegalArgumentException("Take profit must be below entry price for SELL orders");
+            }
+        }
+
+        if (dto.getStopLoss() != null) {
+            if (dto.getSide() == OrderSide.BUY && dto.getStopLoss().compareTo(referencePrice) >= 0) {
+                throw new IllegalArgumentException("Stop loss must be below entry price for BUY orders");
+            }
+            if (dto.getSide() == OrderSide.SELL && dto.getStopLoss().compareTo(referencePrice) <= 0) {
+                throw new IllegalArgumentException("Stop loss must be above entry price for SELL orders");
+            }
         }
     }
 

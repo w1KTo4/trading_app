@@ -27,6 +27,7 @@
   gap: 0.6rem;
   align-items: center;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .tab-link {
@@ -48,6 +49,24 @@
   margin: 0;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #334867;
+  border-radius: 999px;
+  background: #0a1323;
+  color: #d1dff2;
+  font-size: 0.8rem;
+}
+
+.status-pill.is-live {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.1);
+}
+
 .stack {
   display: grid;
   gap: 0.75rem;
@@ -66,6 +85,20 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.6rem;
+}
+
+.quick-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quick-links,
+.inline-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .terminal-grid {
@@ -189,6 +222,11 @@
   gap: 0.75rem;
 }
 
+.trade-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .live-price {
   font-size: 1.2rem;
   font-family: "Roboto Mono", Consolas, monospace;
@@ -199,6 +237,15 @@
 .tabs-row {
   display: flex;
   gap: 0.55rem;
+}
+
+.selected-symbol-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #22324a;
 }
 
 .table-wrap {
@@ -282,10 +329,50 @@
   color: #d1dff2;
 }
 
+.button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.segment-btn {
+  width: 100%;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.65rem;
+}
+
+.order-presets {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.preset-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.order-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid #24354c;
+  border-radius: 10px;
+  background: rgba(8, 15, 26, 0.7);
+}
+
+.trade-actions {
+  flex-wrap: wrap;
 }
 
 label {
@@ -321,6 +408,11 @@ select option {
   margin: 0;
 }
 
+.success-text {
+  color: #4ade80;
+  margin: 0;
+}
+
 .pnl-positive {
   color: #22c55e;
 }
@@ -340,6 +432,10 @@ select option {
   width: min(430px, 95vw);
   display: grid;
   gap: 0.75rem;
+}
+
+.market-search {
+  width: min(360px, 100%);
 }
 
 .chart-card {
@@ -401,6 +497,11 @@ select option {
 
 @media (max-width: 760px) {
   .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .quick-actions-bar {
     flex-direction: column;
     align-items: flex-start;
   }

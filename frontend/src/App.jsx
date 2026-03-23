@@ -9,7 +9,7 @@ import Portfolio from './pages/Portfolio';
 import Instrument from './pages/Instrument';
 import { WebSocketProvider, useWebSocketData } from './ws/WebSocketProvider';
 
-function Layout({ email, onLogout, children }) {
+function Layout({ email, accountId, onLogout, children }) {
   const { connected } = useWebSocketData();
 
   return (
@@ -17,7 +17,7 @@ function Layout({ email, onLogout, children }) {
       <header className="topbar">
         <div className="brand">
           <h1>Trading Station</h1>
-          <p className="muted">WS: {connected ? 'online' : 'offline'}</p>
+          <p className="muted">Szybsze przejscia, prostsze portfolio i czytelniejszy handel.</p>
         </div>
         <nav className="nav">
           <NavLink to="/dashboard" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
@@ -29,7 +29,9 @@ function Layout({ email, onLogout, children }) {
           <NavLink to="/portfolio" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
             Portfolio
           </NavLink>
-          <span>{email}</span>
+          <span className={`status-pill ${connected ? 'is-live' : ''}`}>WS: {connected ? 'online' : 'offline'}</span>
+          <span className="status-pill">Konto #{accountId || 1}</span>
+          <span className="status-pill">{email}</span>
           <button className="button ghost" onClick={onLogout}>
             Wyloguj
           </button>
@@ -61,10 +63,16 @@ function App() {
     setAccountId(storedAccountId);
   }, []);
 
+  const syncAccountId = (nextAccountId) => {
+    const resolvedAccountId = Number(nextAccountId || 1);
+    localStorage.setItem('accountId', String(resolvedAccountId));
+    setAccountId(resolvedAccountId);
+  };
+
   const onAuthSuccess = ({ token: nextToken, email: nextEmail, accountId: nextAccountId }) => {
     setToken(nextToken);
     setEmail(nextEmail);
-    setAccountId(nextAccountId || 1);
+    syncAccountId(nextAccountId || 1);
   };
 
   const onLogout = () => {
@@ -74,6 +82,7 @@ function App() {
     localStorage.removeItem('accountId');
     setToken(null);
     setEmail(null);
+    setAccountId(1);
   };
 
   const wsKey = useMemo(() => token || 'no-token', [token]);
@@ -89,8 +98,8 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute token={token}>
-                <Layout email={email} onLogout={onLogout}>
-                  <Dashboard accountId={accountId} />
+                <Layout email={email} accountId={accountId} onLogout={onLogout}>
+                  <Dashboard accountId={accountId} onAccountChange={syncAccountId} />
                 </Layout>
               </ProtectedRoute>
             }
@@ -100,7 +109,7 @@ function App() {
             path="/market"
             element={
               <ProtectedRoute token={token}>
-                <Layout email={email} onLogout={onLogout}>
+                <Layout email={email} accountId={accountId} onLogout={onLogout}>
                   <Market />
                 </Layout>
               </ProtectedRoute>
@@ -111,8 +120,8 @@ function App() {
             path="/portfolio"
             element={
               <ProtectedRoute token={token}>
-                <Layout email={email} onLogout={onLogout}>
-                  <Portfolio accountId={accountId} />
+                <Layout email={email} accountId={accountId} onLogout={onLogout}>
+                  <Portfolio accountId={accountId} onAccountChange={syncAccountId} />
                 </Layout>
               </ProtectedRoute>
             }
@@ -122,7 +131,7 @@ function App() {
             path="/instrument/:symbol"
             element={
               <ProtectedRoute token={token}>
-                <Layout email={email} onLogout={onLogout}>
+                <Layout email={email} accountId={accountId} onLogout={onLogout}>
                   <Instrument accountId={accountId} />
                 </Layout>
               </ProtectedRoute>

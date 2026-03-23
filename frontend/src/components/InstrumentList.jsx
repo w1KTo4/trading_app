@@ -2,12 +2,15 @@ import { Link } from 'react-router-dom';
 import { useWebSocketData } from '../ws/WebSocketProvider';
 import { formatUsd } from '../utils/formatters';
 
-function InstrumentList({ instruments = [] }) {
+function InstrumentList({ instruments = [], title = 'Instrumenty', emptyMessage = 'Brak instrumentow.' }) {
   const { latestPrices } = useWebSocketData();
 
   return (
     <div className="card">
-      <h3>Instrumenty</h3>
+      <div className="panel-head">
+        <h3>{title}</h3>
+        <span className="muted">{instruments.length}</span>
+      </div>
       <table className="table">
         <thead>
           <tr>
@@ -28,13 +31,23 @@ function InstrumentList({ instruments = [] }) {
                 <td>{item.type}</td>
                 <td>{formatUsd(live ?? item.lastPrice, 4)}</td>
                 <td>
-                  <Link className="button ghost" to={`/instrument/${item.symbol}`}>
-                    Szczegoly
-                  </Link>
+                  <div className="inline-actions">
+                    <Link className="button ghost" to={`/instrument/${item.symbol}`}>
+                      Handluj
+                    </Link>
+                    <Link className="button ghost" to="/dashboard">
+                      Terminal
+                    </Link>
+                  </div>
                 </td>
               </tr>
             );
           })}
+          {instruments.length === 0 && (
+            <tr>
+              <td colSpan={5}>{emptyMessage}</td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

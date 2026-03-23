@@ -1,6 +1,8 @@
 import { formatUsd } from '../utils/formatters';
 
-function PositionList({ positions = [], showExposure = false, title = 'Pozycje' }) {
+function PositionList({ positions = [], showExposure = false, showRealized = true, title = 'Pozycje' }) {
+  const columnCount = 6 + Number(showExposure) + Number(showRealized);
+
   return (
     <div className="card">
       <h3>{title}</h3>
@@ -14,13 +16,13 @@ function PositionList({ positions = [], showExposure = false, title = 'Pozycje' 
             <th>Aktualna (USD)</th>
             {showExposure && <th>Ekspozycja (USD)</th>}
             <th>Unrealized P&L (USD)</th>
-            <th>Realized P&L (USD)</th>
+            {showRealized && <th>Realized P&L (USD)</th>}
           </tr>
         </thead>
         <tbody>
           {positions.length === 0 && (
             <tr>
-              <td colSpan={showExposure ? 8 : 7}>Brak otwartych pozycji</td>
+              <td colSpan={columnCount}>Brak otwartych pozycji</td>
             </tr>
           )}
           {positions.map((position) => (
@@ -40,9 +42,11 @@ function PositionList({ positions = [], showExposure = false, title = 'Pozycje' 
               <td className={Number(position.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
                 {formatUsd(position.unrealizedPnl, 2)}
               </td>
-              <td className={Number(position.realizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                {formatUsd(position.realizedPnl, 2)}
-              </td>
+              {showRealized && (
+                <td className={Number(position.realizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
+                  {formatUsd(position.realizedPnl, 2)}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

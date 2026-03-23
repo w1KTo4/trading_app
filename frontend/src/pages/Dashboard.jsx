@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import PositionList from '../components/PositionList';
 import Chart from '../components/Chart';
@@ -26,6 +27,7 @@ const WATCH_TABS = [
 ];
 const FAVORITES_STORAGE_KEY = 'favoriteSymbols';
 const CANDLE_LIMIT = 260;
+const EMPTY_PORTFOLIO = { balance: 0, equity: 0, usedMargin: 0, positions: [] };
 
 const getInstrumentCategory = (instrument) => {
   switch (instrument.type) {
@@ -91,9 +93,10 @@ const updateCandlesWithTick = (previousCandles, nextPrice, timeframe) => {
   return next;
 };
 
-function Dashboard({ accountId }) {
+function Dashboard({ accountId, onAccountChange }) {
   const { latestPrices, connected } = useWebSocketData();
-  const [portfolio, setPortfolio] = useState(null);
+  const [activeAccountId, setActiveAccountId] = useState(accountId);
+  const [portfolio, setPortfolio] = useState(EMPTY_PORTFOLIO);
   const [orders, setOrders] = useState([]);
   const [instruments, setInstruments] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
@@ -119,6 +122,14 @@ function Dashboard({ accountId }) {
     [instruments, selectedSymbol],
   );
   const selectedLivePrice = selectedSymbol ? latestPrices[selectedSymbol]?.price : null;
+  const selectedPosition = useMemo(
+    () => (portfolio?.positions || []).find((position) => position.symbol === selectedSymbol) || null,
+    [portfolio, selectedSymbol],
+  );
+
+  useEffect(() => {
+    setActiveAccountId(accountId);
+  }, [accountId]);
 
   useEffect(() => {
     localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favoriteSymbols));
@@ -146,29 +157,27 @@ function Dashboard({ accountId }) {
         }
         return left.symbol.localeCompare(right.symbol);
       });
-  }, [instruments, watchTab, searchTerm, favoritesSet]);
+  }, [favoritesSet, instruments, searchTerm, watchTab]);
 
-  useEffect(() => {
-    if (!accountId) {
+  const loadTerminalData = async (preferredAccountId = activeAccountId || accountId) => {
+    if (!preferredAccountId) {
       return;
     }
 
-    const load = async () => {
-      setLoading(true);
-      let nextMessage = '';
-      let resolvedAccountId = accountId;
+    setLoading(true);
+    let nextMessage = '';
+    let resolvedAccountId = preferredAccountId;
 
-      try {
-        const profileRes = await api.get('/api/auth/me');
-        const profileAccountIds = profileRes.data?.accountIds || [];
-        if (profileAccountIds.length > 0 && !profileAccountIds.includes(accountId)) {
-          resolvedAccountId = profileAccountIds[0];
-          localStorage.setItem('accountId', String(resolvedAccountId));
-          nextMessage = `Przelaczono konto na #${resolvedAccountId}.`;
-        }
-      } catch (_profileError) {
-        // Zostawiamy accountId z localStorage.
+    try {
+      const profileRes = await api.get('/api/auth/me');
+      const profileAccountIds = profileRes.data?.accountIds || [];
+      if (profileAccountIds.length > 0 && !profileAccountIds.includes(preferredAccountId)) {
+        resolvedAccountId = profileAccountIds[0];
+        onAccountChange?.(resolvedAccountId);
+        nextMessage = `Przelaczono aktywne konto na #${resolvedAccountId}.`;
       }
+
+      setActiveAccountId(resolvedAccountId);
 
       const [instrumentsRes, portfolioRes, ordersRes] = await Promise.allSettled([
         api.get('/api/instruments'),
@@ -177,38 +186,49 @@ function Dashboard({ accountId }) {
       ]);
 
       if (instrumentsRes.status === 'fulfilled') {
-        setInstruments(instrumentsRes.value.data);
-        setSelectedSymbol((prev) => prev || instrumentsRes.value.data[0]?.symbol || null);
+        const nextInstruments = instrumentsRes.value.data || [];
+        setInstruments(nextInstruments);
+        setSelectedSymbol((previous) => {
+          if (previous && nextInstruments.some((instrument) => instrument.symbol === previous)) {
+            return previous;
+          }
+          return nextInstruments[0]?.symbol || null;
+        });
       } else {
         setInstruments([]);
-        nextMessage = 'Nie udalo sie pobrac instrumentow.';
+        nextMessage = nextMessage || 'Nie udalo sie pobrac instrumentow.';
       }
 
       if (portfolioRes.status === 'fulfilled') {
-        setPortfolio(portfolioRes.value.data);
+        setPortfolio(portfolioRes.value.data || EMPTY_PORTFOLIO);
       } else {
-        setPortfolio({ balance: 0, equity: 0, usedMargin: 0, positions: [] });
+        setPortfolio(EMPTY_PORTFOLIO);
         nextMessage = nextMessage || 'Brak dostepu do portfela.';
       }
 
       if (ordersRes.status === 'fulfilled') {
-        setOrders(ordersRes.value.data);
+        setOrders(ordersRes.value.data || []);
       } else {
         setOrders([]);
         nextMessage = nextMessage || 'Brak dostepu do historii zlecen.';
       }
 
       setMessage(nextMessage);
-      setLoading(false);
-    };
-
-    load().catch(() => {
-      setLoading(false);
-      setPortfolio({ balance: 0, equity: 0, usedMargin: 0, positions: [] });
+    } catch {
+      setPortfolio(EMPTY_PORTFOLIO);
       setOrders([]);
       setInstruments([]);
       setMessage('Nie udalo sie pobrac danych terminala.');
-    });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!accountId) {
+      return;
+    }
+    loadTerminalData(accountId);
   }, [accountId]);
 
   useEffect(() => {
@@ -216,6 +236,7 @@ function Dashboard({ accountId }) {
       setCandles([]);
       return;
     }
+
     api
       .get(`/api/instruments/${selectedSymbol}/candles?timeframe=${timeframe}&limit=${CANDLE_LIMIT}`)
       .then((res) => setCandles(res.data.map(normalizeCandle)))
@@ -235,24 +256,52 @@ function Dashboard({ accountId }) {
     );
   };
 
-  if (!accountId) {
+  if (!activeAccountId) {
     return <p>Brak accountId. Zaloguj sie ponownie.</p>;
   }
 
   return (
     <div className="stack">
+      <div className="card quick-actions-bar">
+        <div>
+          <h2>Terminal</h2>
+          <p className="muted">Konto #{activeAccountId} - handel z szybkim odswiezaniem po zleceniu.</p>
+        </div>
+        <div className="quick-links">
+          <Link className="button ghost" to="/market">
+            Przegladaj rynek
+          </Link>
+          <Link className="button ghost" to="/portfolio">
+            Otworz portfolio
+          </Link>
+          {selectedSymbol && (
+            <Link className="button ghost" to={`/instrument/${selectedSymbol}`}>
+              Pelny widok {selectedSymbol}
+            </Link>
+          )}
+        </div>
+      </div>
+
       <div className="card summary-grid">
         <div>
           <p className="muted">Balance (USD)</p>
-          <h2>{formatUsd(portfolio?.balance || 0, 2)}</h2>
+          <h2>{formatUsd(portfolio.balance, 2)}</h2>
         </div>
         <div>
           <p className="muted">Equity (USD)</p>
-          <h2>{formatUsd(portfolio?.equity || 0, 2)}</h2>
+          <h2>{formatUsd(portfolio.equity, 2)}</h2>
         </div>
         <div>
           <p className="muted">Used Margin (USD)</p>
-          <h2>{formatUsd(portfolio?.usedMargin || 0, 2)}</h2>
+          <h2>{formatUsd(portfolio.usedMargin, 2)}</h2>
+        </div>
+        <div>
+          <p className="muted">Otwarte pozycje</p>
+          <h2>{portfolio.positions?.length || 0}</h2>
+        </div>
+        <div>
+          <p className="muted">Wybrany instrument</p>
+          <h2>{selectedSymbol || 'Brak'}</h2>
         </div>
         <div>
           <p className="muted">Connection</p>
@@ -356,15 +405,45 @@ function Dashboard({ accountId }) {
           </div>
 
           <Chart embedded candles={candles} symbol={selectedSymbol || 'N/A'} timeframe={timeframe} />
+
+          <div className="selected-symbol-card">
+            {selectedPosition ? (
+              <>
+                <div>
+                  <p className="muted">Aktywna pozycja</p>
+                  <strong>{Number(selectedPosition.quantity) >= 0 ? 'LONG' : 'SHORT'}</strong>
+                </div>
+                <div>
+                  <p className="muted">Ilosc</p>
+                  <strong>{Number(selectedPosition.quantity).toFixed(2)}</strong>
+                </div>
+                <div>
+                  <p className="muted">Open P&L</p>
+                  <strong className={Number(selectedPosition.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
+                    {formatUsd(selectedPosition.unrealizedPnl, 2)}
+                  </strong>
+                </div>
+              </>
+            ) : (
+              <p className="muted">Brak otwartej pozycji dla wybranego instrumentu.</p>
+            )}
+          </div>
         </section>
 
         <aside className="trade-pane">
           <OrderForm
             symbol={selectedSymbol || 'AAPL'}
-            accountId={accountId}
-            onOrderPlaced={(order) => {
-              setMessage(`Order #${order.id} ${order.status}`);
-              setOrders((prev) => [order, ...prev].slice(0, 30));
+            accountId={activeAccountId}
+            lastPrice={selectedLivePrice ?? selectedInstrument?.lastPrice ?? 0}
+            position={selectedPosition}
+            onOrderPlaced={async (order) => {
+              setMessage(
+                order.status === 'FILLED'
+                  ? `Zlecenie #${order.id} wykonane po ${formatUsd(order.filledPrice ?? selectedLivePrice ?? 0, 4)}.`
+                  : `Zlecenie #${order.id} zapisane ze statusem ${order.status}.`,
+              );
+              setActiveTab(order.status === 'FILLED' ? 'positions' : 'orders');
+              await loadTerminalData(activeAccountId);
             }}
           />
         </aside>
@@ -383,15 +462,18 @@ function Dashboard({ accountId }) {
           className={`button ghost ${activeTab === 'orders' ? 'active-tab' : ''}`}
           onClick={() => setActiveTab('orders')}
         >
-          Zlecenia
+          Ostatnie zlecenia
         </button>
       </div>
 
       {activeTab === 'positions' ? (
-        <PositionList positions={portfolio?.positions || []} />
+        <PositionList positions={portfolio.positions || []} title="Pozycje na koncie" />
       ) : (
         <div className="card">
-          <h3>Historia zlecen</h3>
+          <div className="panel-head">
+            <h3>Ostatnie zlecenia</h3>
+            <span className="muted">{orders.length}</span>
+          </div>
           <table className="table">
             <thead>
               <tr>
@@ -410,7 +492,7 @@ function Dashboard({ accountId }) {
                   <td colSpan={7}>Brak zlecen</td>
                 </tr>
               )}
-              {orders.map((order) => (
+              {orders.slice(0, 15).map((order) => (
                 <tr key={order.id}>
                   <td>{order.id}</td>
                   <td>{order.symbol}</td>
@@ -433,4 +515,3 @@ function Dashboard({ accountId }) {
 }
 
 export default Dashboard;
-
