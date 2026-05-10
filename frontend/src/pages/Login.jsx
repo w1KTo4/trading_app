@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { resolvePrimaryAccountId, storeAuthSession } from '../services/authSession';
 
 function Login({ onAuthSuccess }) {
   const navigate = useNavigate();
@@ -17,21 +18,8 @@ function Login({ onAuthSuccess }) {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const { data } = await api.post('/api/auth/login', { email: normalizedEmail, password });
-
-      let accountId = Number(localStorage.getItem('accountId') || 1);
-      try {
-        const profile = await api.get('/api/auth/me', {
-          headers: { Authorization: `Bearer ${data.accessToken}` },
-        });
-        accountId = profile.data.accountIds?.[0] || accountId;
-      } catch (_profileError) {
-        // Nie blokuj logowania, jesli /me chwilowo zwroci blad.
-      }
-
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('userEmail', data.email || normalizedEmail);
-      localStorage.setItem('accountId', String(accountId));
+      const accountId = await resolvePrimaryAccountId(data.accessToken, localStorage.getItem('accountId') || 1);
+      storeAuthSession(data, normalizedEmail, accountId);
 
       onAuthSuccess?.({ token: data.accessToken, email: data.email || normalizedEmail, accountId });
       navigate('/dashboard');

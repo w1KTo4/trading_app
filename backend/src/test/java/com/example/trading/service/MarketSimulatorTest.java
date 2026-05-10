@@ -30,6 +30,10 @@ class MarketSimulatorTest {
     private MatchingEngineService matchingEngineService;
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+    @Mock
+    private TwelveDataMarketDataService twelveDataMarketDataService;
+    @Mock
+    private MarketFocusRegistryService marketFocusRegistryService;
 
     @Test
     void shouldGenerateTicksAndPublish() {
@@ -50,7 +54,9 @@ class MarketSimulatorTest {
                 instrumentRepository,
                 marketPriceRepository,
                 matchingEngineService,
-                messagingTemplate
+                messagingTemplate,
+                twelveDataMarketDataService,
+                marketFocusRegistryService
         );
 
         service.generateTickCycle();

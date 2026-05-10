@@ -1,20 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../services/api';
 import PositionList from '../components/PositionList';
 import Chart from '../components/Chart';
 import OrderForm from '../components/OrderForm';
-import { useWebSocketData } from '../ws/WebSocketProvider';
-import { formatUsd } from '../utils/formatters';
+import api from '../services/api';
+import { useWebSocketData } from '../ws/useWebSocketData';
+import { formatPriceSource, formatUsd } from '../utils/formatters';
+import useMarketFocus from '../hooks/useMarketFocus';
+import useInstrumentCandles from '../hooks/useInstrumentCandles';
 
 const TIMEFRAMES = ['15m', '30m', '1h', '4h', '1d'];
-const TIMEFRAME_MS = {
-  '15m': 15 * 60 * 1000,
-  '30m': 30 * 60 * 1000,
-  '1h': 60 * 60 * 1000,
-  '4h': 4 * 60 * 60 * 1000,
-  '1d': 24 * 60 * 60 * 1000,
-};
 const WATCH_TABS = [
   { key: 'ALL', label: 'Wszystkie' },
   { key: 'FAVORITES', label: 'Ulubione' },
@@ -49,50 +44,6 @@ const getInstrumentCategory = (instrument) => {
   }
 };
 
-const normalizeCandle = (candle) => ({
-  time: candle.time,
-  open: Number(candle.open),
-  high: Number(candle.high),
-  low: Number(candle.low),
-  close: Number(candle.close),
-});
-
-const updateCandlesWithTick = (previousCandles, nextPrice, timeframe) => {
-  const frameMs = TIMEFRAME_MS[timeframe] || TIMEFRAME_MS['15m'];
-  const nowMs = Date.now();
-  const bucketMs = Math.floor(nowMs / frameMs) * frameMs;
-  const bucketIso = new Date(bucketMs).toISOString();
-  const price = Number(nextPrice);
-
-  if (Number.isNaN(price)) {
-    return previousCandles;
-  }
-
-  if (previousCandles.length === 0) {
-    return [{ time: bucketIso, open: price, high: price, low: price, close: price }];
-  }
-
-  const next = [...previousCandles];
-  const last = next[next.length - 1];
-  const lastBucket = Math.floor(new Date(last.time).getTime() / frameMs) * frameMs;
-
-  if (lastBucket === bucketMs) {
-    next[next.length - 1] = {
-      ...last,
-      high: Math.max(Number(last.high), price),
-      low: Math.min(Number(last.low), price),
-      close: price,
-    };
-    return next;
-  }
-
-  next.push({ time: bucketIso, open: price, high: price, low: price, close: price });
-  if (next.length > CANDLE_LIMIT) {
-    return next.slice(next.length - CANDLE_LIMIT);
-  }
-  return next;
-};
-
 function Dashboard({ accountId, onAccountChange }) {
   const { latestPrices, connected } = useWebSocketData();
   const [activeAccountId, setActiveAccountId] = useState(accountId);
@@ -100,13 +51,13 @@ function Dashboard({ accountId, onAccountChange }) {
   const [orders, setOrders] = useState([]);
   const [instruments, setInstruments] = useState([]);
   const [selectedSymbol, setSelectedSymbol] = useState(null);
-  const [candles, setCandles] = useState([]);
   const [timeframe, setTimeframe] = useState('15m');
   const [activeTab, setActiveTab] = useState('positions');
   const [watchTab, setWatchTab] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const activeAccountIdRef = useRef(accountId);
   const [favoriteSymbols, setFavoriteSymbols] = useState(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY) || '[]');
@@ -121,7 +72,14 @@ function Dashboard({ accountId, onAccountChange }) {
     () => instruments.find((instrument) => instrument.symbol === selectedSymbol) || null,
     [instruments, selectedSymbol],
   );
-  const selectedLivePrice = selectedSymbol ? latestPrices[selectedSymbol]?.price : null;
+  const selectedTick = selectedSymbol ? latestPrices[selectedSymbol] : null;
+  const selectedLivePrice = selectedTick?.price ?? null;
+  const { candles } = useInstrumentCandles({
+    symbol: selectedSymbol,
+    timeframe,
+    limit: CANDLE_LIMIT,
+    livePrice: selectedLivePrice,
+  });
   const selectedPosition = useMemo(
     () => (portfolio?.positions || []).find((position) => position.symbol === selectedSymbol) || null,
     [portfolio, selectedSymbol],
@@ -130,6 +88,10 @@ function Dashboard({ accountId, onAccountChange }) {
   useEffect(() => {
     setActiveAccountId(accountId);
   }, [accountId]);
+
+  useEffect(() => {
+    activeAccountIdRef.current = activeAccountId;
+  }, [activeAccountId]);
 
   useEffect(() => {
     localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favoriteSymbols));
@@ -159,19 +121,30 @@ function Dashboard({ accountId, onAccountChange }) {
       });
   }, [favoritesSet, instruments, searchTerm, watchTab]);
 
-  const loadTerminalData = async (preferredAccountId = activeAccountId || accountId) => {
-    if (!preferredAccountId) {
+  const focusSymbols = useMemo(
+    () => [
+      selectedSymbol,
+      ...favoriteSymbols.slice(0, 2),
+      ...filteredInstruments.slice(0, 3).map((instrument) => instrument.symbol),
+    ],
+    [favoriteSymbols, filteredInstruments, selectedSymbol],
+  );
+  useMarketFocus(focusSymbols);
+
+  const loadTerminalData = useCallback(async (preferredAccountId) => {
+    const requestedAccountId = Number(preferredAccountId || activeAccountIdRef.current || accountId || 0);
+    if (!requestedAccountId) {
       return;
     }
 
     setLoading(true);
     let nextMessage = '';
-    let resolvedAccountId = preferredAccountId;
+    let resolvedAccountId = requestedAccountId;
 
     try {
       const profileRes = await api.get('/api/auth/me');
       const profileAccountIds = profileRes.data?.accountIds || [];
-      if (profileAccountIds.length > 0 && !profileAccountIds.includes(preferredAccountId)) {
+      if (profileAccountIds.length > 0 && !profileAccountIds.includes(requestedAccountId)) {
         resolvedAccountId = profileAccountIds[0];
         onAccountChange?.(resolvedAccountId);
         nextMessage = `Przelaczono aktywne konto na #${resolvedAccountId}.`;
@@ -222,33 +195,14 @@ function Dashboard({ accountId, onAccountChange }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accountId, onAccountChange]);
 
   useEffect(() => {
     if (!accountId) {
       return;
     }
     loadTerminalData(accountId);
-  }, [accountId]);
-
-  useEffect(() => {
-    if (!selectedSymbol) {
-      setCandles([]);
-      return;
-    }
-
-    api
-      .get(`/api/instruments/${selectedSymbol}/candles?timeframe=${timeframe}&limit=${CANDLE_LIMIT}`)
-      .then((res) => setCandles(res.data.map(normalizeCandle)))
-      .catch(() => setCandles([]));
-  }, [selectedSymbol, timeframe]);
-
-  useEffect(() => {
-    if (!selectedSymbol || selectedLivePrice == null) {
-      return;
-    }
-    setCandles((prev) => updateCandlesWithTick(prev, selectedLivePrice, timeframe));
-  }, [selectedLivePrice, selectedSymbol, timeframe]);
+  }, [accountId, loadTerminalData]);
 
   const toggleFavorite = (symbol) => {
     setFavoriteSymbols((previous) =>
@@ -256,16 +210,26 @@ function Dashboard({ accountId, onAccountChange }) {
     );
   };
 
+  const positions = portfolio.positions || [];
+  const freeMargin = Number(portfolio.equity || 0) - Number(portfolio.usedMargin || 0);
+  const openPnl = positions.reduce((acc, position) => acc + Number(position.unrealizedPnl || 0), 0);
+  const pendingOrders = orders.filter((order) => order.status === 'NEW').length;
+  const selectedOrders = orders.filter((order) => order.symbol === selectedSymbol).slice(0, 3);
+  const selectedPriceSource = formatPriceSource(selectedTick?.source || 'SNAPSHOT', connected);
+  const marginLevel =
+    Number(portfolio.usedMargin) > 0 ? (Number(portfolio.equity || 0) / Number(portfolio.usedMargin || 1)) * 100 : 999;
+
   if (!activeAccountId) {
     return <p>Brak accountId. Zaloguj sie ponownie.</p>;
   }
 
   return (
-    <div className="stack">
-      <div className="card quick-actions-bar">
+    <div className="stack terminal-stack">
+      <div className="card quick-actions-bar hero-card">
         <div>
+          <p className="eyebrow">Trading workspace</p>
           <h2>Terminal</h2>
-          <p className="muted">Konto #{activeAccountId} - handel z szybkim odswiezaniem po zleceniu.</p>
+          <p className="muted">Jedno miejsce do obserwacji rynku, otwierania pozycji i kontroli ryzyka.</p>
         </div>
         <div className="quick-links">
           <Link className="button ghost" to="/market">
@@ -282,37 +246,46 @@ function Dashboard({ accountId, onAccountChange }) {
         </div>
       </div>
 
-      <div className="card summary-grid">
-        <div>
-          <p className="muted">Balance (USD)</p>
+      <div className="summary-grid summary-grid-rich">
+        <div className="card summary-card">
+          <p className="muted">Balance</p>
           <h2>{formatUsd(portfolio.balance, 2)}</h2>
+          <span className="summary-note">Kapital bazowy bez otwartego P&L.</span>
         </div>
-        <div>
-          <p className="muted">Equity (USD)</p>
+        <div className="card summary-card">
+          <p className="muted">Equity</p>
           <h2>{formatUsd(portfolio.equity, 2)}</h2>
+          <span className={`summary-note ${openPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>Open P&L {formatUsd(openPnl, 2)}</span>
         </div>
-        <div>
-          <p className="muted">Used Margin (USD)</p>
-          <h2>{formatUsd(portfolio.usedMargin, 2)}</h2>
+        <div className="card summary-card">
+          <p className="muted">Free margin</p>
+          <h2>{formatUsd(freeMargin, 2)}</h2>
+          <span className="summary-note">Margin level {Number.isFinite(marginLevel) ? `${marginLevel.toFixed(0)}%` : 'n/a'}</span>
         </div>
-        <div>
-          <p className="muted">Otwarte pozycje</p>
-          <h2>{portfolio.positions?.length || 0}</h2>
+        <div className="card summary-card">
+          <p className="muted">Aktywne pozycje</p>
+          <h2>{positions.length}</h2>
+          <span className="summary-note">{pendingOrders} oczekujacych zlecen</span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Wybrany instrument</p>
           <h2>{selectedSymbol || 'Brak'}</h2>
+          <span className="summary-note">{selectedInstrument?.type || 'Wybierz z watchlisty'}</span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Connection</p>
           <h2 className={connected ? 'pnl-positive' : 'pnl-negative'}>{connected ? 'LIVE' : 'OFFLINE'}</h2>
+          <span className="summary-note">{selectedPriceSource}</span>
         </div>
       </div>
 
       <div className="terminal-grid">
         <aside className="card watchlist-pane">
           <div className="panel-head">
-            <h3>Watchlist</h3>
+            <div>
+              <h3>Watchlist</h3>
+              <p className="muted">Ulubione symbole i szybkie przejscie do decyzji.</p>
+            </div>
             <span className="muted">{filteredInstruments.length}</span>
           </div>
 
@@ -339,7 +312,8 @@ function Dashboard({ accountId, onAccountChange }) {
 
           <div className="watchlist">
             {filteredInstruments.map((instrument) => {
-              const price = Number(latestPrices[instrument.symbol]?.price ?? instrument.lastPrice);
+              const tick = latestPrices[instrument.symbol];
+              const price = Number(tick?.price ?? instrument.lastPrice);
               const active = selectedSymbol === instrument.symbol;
               const favorite = favoritesSet.has(instrument.symbol);
 
@@ -355,7 +329,8 @@ function Dashboard({ accountId, onAccountChange }) {
                     <small className="muted">{instrument.name}</small>
                   </span>
                   <span className="watch-item-side">
-                    <span>{formatUsd(price, 4)}</span>
+                    <span className="watch-item-price">{formatUsd(price, 4)}</span>
+                    <span className="pill-tag">{formatPriceSource(tick?.source || 'DB')}</span>
                     <span
                       className={`favorite-btn ${favorite ? 'is-favorite' : ''}`}
                       role="button"
@@ -382,13 +357,20 @@ function Dashboard({ accountId, onAccountChange }) {
           </div>
         </aside>
 
-        <section className="card chart-pane">
-          <div className="panel-head">
+        <section className="card chart-pane chart-pane-rich">
+          <div className="panel-head chart-panel-head">
             <div>
-              <h3>{selectedInstrument?.symbol || 'N/A'}</h3>
-              <p className="muted">{selectedInstrument?.name || 'Wybierz instrument'}</p>
+              <div className="headline-row">
+                <h3>{selectedInstrument?.symbol || 'N/A'}</h3>
+                {selectedInstrument?.type && <span className="pill-tag">{selectedInstrument.type}</span>}
+                <span className={`pill-tag ${connected ? 'pill-live' : ''}`}>{selectedPriceSource}</span>
+              </div>
+              <p className="muted">{selectedInstrument?.name || 'Wybierz instrument z watchlisty'}</p>
             </div>
-            <div className="live-price">{formatUsd(selectedLivePrice ?? selectedInstrument?.lastPrice ?? 0, 4)}</div>
+            <div className="live-price-block">
+              <div className="live-price">{formatUsd(selectedLivePrice ?? selectedInstrument?.lastPrice ?? 0, 4)}</div>
+              <small className="muted">Cena referencyjna dla zlecenia</small>
+            </div>
           </div>
 
           <div className="timeframe-row">
@@ -404,29 +386,34 @@ function Dashboard({ accountId, onAccountChange }) {
             ))}
           </div>
 
-          <Chart embedded candles={candles} symbol={selectedSymbol || 'N/A'} timeframe={timeframe} />
+          <Chart
+            embedded
+            candles={candles}
+            symbol={selectedSymbol || 'N/A'}
+            timeframe={timeframe}
+            livePrice={selectedLivePrice ?? selectedInstrument?.lastPrice ?? 0}
+            priceSource={selectedPriceSource}
+          />
 
           <div className="selected-symbol-card">
-            {selectedPosition ? (
-              <>
-                <div>
-                  <p className="muted">Aktywna pozycja</p>
-                  <strong>{Number(selectedPosition.quantity) >= 0 ? 'LONG' : 'SHORT'}</strong>
-                </div>
-                <div>
-                  <p className="muted">Ilosc</p>
-                  <strong>{Number(selectedPosition.quantity).toFixed(2)}</strong>
-                </div>
-                <div>
-                  <p className="muted">Open P&L</p>
-                  <strong className={Number(selectedPosition.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                    {formatUsd(selectedPosition.unrealizedPnl, 2)}
-                  </strong>
-                </div>
-              </>
-            ) : (
-              <p className="muted">Brak otwartej pozycji dla wybranego instrumentu.</p>
-            )}
+            <div className="info-chip">
+              <p className="muted">Pozycja</p>
+              <strong>{selectedPosition ? (Number(selectedPosition.quantity) >= 0 ? 'LONG' : 'SHORT') : 'Brak'}</strong>
+            </div>
+            <div className="info-chip">
+              <p className="muted">Ilosc</p>
+              <strong>{selectedPosition ? Math.abs(Number(selectedPosition.quantity)).toFixed(2) : '0.00'}</strong>
+            </div>
+            <div className="info-chip">
+              <p className="muted">Open P&L</p>
+              <strong className={Number(selectedPosition?.unrealizedPnl || 0) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
+                {formatUsd(selectedPosition?.unrealizedPnl || 0, 2)}
+              </strong>
+            </div>
+            <div className="info-chip">
+              <p className="muted">Ostatnie zlecenia</p>
+              <strong>{selectedOrders.length}</strong>
+            </div>
           </div>
         </section>
 
@@ -443,9 +430,34 @@ function Dashboard({ accountId, onAccountChange }) {
                   : `Zlecenie #${order.id} zapisane ze statusem ${order.status}.`,
               );
               setActiveTab(order.status === 'FILLED' ? 'positions' : 'orders');
-              await loadTerminalData(activeAccountId);
+              await loadTerminalData(activeAccountIdRef.current);
             }}
           />
+
+          <div className="card order-context-card">
+            <div className="panel-head">
+              <h3>Kontekst decyzji</h3>
+              <span className="muted">{selectedSymbol || 'N/A'}</span>
+            </div>
+            <div className="mini-stat-grid">
+              <div className="mini-stat">
+                <p className="muted">Srednia pozycji</p>
+                <strong>{formatUsd(selectedPosition?.averagePrice || 0, 4)}</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Aktualna cena</p>
+                <strong>{formatUsd(selectedLivePrice ?? selectedInstrument?.lastPrice ?? 0, 4)}</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Used margin</p>
+                <strong>{formatUsd(portfolio.usedMargin, 2)}</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Free margin</p>
+                <strong>{formatUsd(freeMargin, 2)}</strong>
+              </div>
+            </div>
+          </div>
         </aside>
       </div>
 
@@ -467,44 +479,51 @@ function Dashboard({ accountId, onAccountChange }) {
       </div>
 
       {activeTab === 'positions' ? (
-        <PositionList positions={portfolio.positions || []} title="Pozycje na koncie" />
+        <PositionList positions={positions} title="Pozycje na koncie" />
       ) : (
         <div className="card">
           <div className="panel-head">
-            <h3>Ostatnie zlecenia</h3>
+            <div>
+              <h3>Ostatnie zlecenia</h3>
+              <p className="muted">Historia wykonanych i oczekujacych decyzji.</p>
+            </div>
             <span className="muted">{orders.length}</span>
           </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Symbol</th>
-                <th>Side</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Qty</th>
-                <th>Price (USD)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 && (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={7}>Brak zlecen</td>
+                  <th>ID</th>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Qty</th>
+                  <th>Price (USD)</th>
                 </tr>
-              )}
-              {orders.slice(0, 15).map((order) => (
-                <tr key={order.id}>
-                  <td>{order.id}</td>
-                  <td>{order.symbol}</td>
-                  <td>{order.side}</td>
-                  <td>{order.type}</td>
-                  <td>{order.status}</td>
-                  <td>{Number(order.quantity).toFixed(2)}</td>
-                  <td>{formatUsd(order.filledPrice ?? order.limitPrice ?? 0, 4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orders.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>Brak zlecen</td>
+                  </tr>
+                )}
+                {orders.slice(0, 15).map((order) => (
+                  <tr key={order.id}>
+                    <td>{order.id}</td>
+                    <td>{order.symbol}</td>
+                    <td>
+                      <span className={`trade-side ${order.side === 'BUY' ? 'buy' : 'sell'}`}>{order.side}</span>
+                    </td>
+                    <td>{order.type}</td>
+                    <td>{order.status}</td>
+                    <td>{Number(order.quantity).toFixed(2)}</td>
+                    <td>{formatUsd(order.filledPrice ?? order.limitPrice ?? 0, 4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

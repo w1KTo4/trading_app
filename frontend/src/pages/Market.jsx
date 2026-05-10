@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import InstrumentList from '../components/InstrumentList';
 import api from '../services/api';
+import useMarketFocus from '../hooks/useMarketFocus';
 
 function Market() {
   const [instruments, setInstruments] = useState([]);
@@ -21,13 +22,15 @@ function Market() {
         instrument.symbol.toLowerCase().includes(search) || instrument.name.toLowerCase().includes(search),
     );
   }, [instruments, searchTerm]);
+  useMarketFocus(filteredInstruments.slice(0, 6).map((instrument) => instrument.symbol));
 
   return (
     <div className="stack">
-      <div className="card quick-actions-bar">
+      <div className="card quick-actions-bar hero-card">
         <div>
+          <p className="eyebrow">Market explorer</p>
           <h2>Rynek</h2>
-          <p className="muted">Przegladaj instrumenty i przechodz od razu do handlu.</p>
+          <p className="muted">Przegladaj instrumenty, wychwytuj ruch i przechodz od razu do handlu.</p>
         </div>
         <input
           className="market-search"

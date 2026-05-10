@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { resolvePrimaryAccountId, storeAuthSession } from '../services/authSession';
 
-function Register() {
+function Register({ onAuthSuccess }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,10 +16,11 @@ function Register() {
     setError('');
 
     try {
-      const { data } = await api.post('/api/auth/register', { email, password });
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('userEmail', data.email);
+      const normalizedEmail = email.trim().toLowerCase();
+      const { data } = await api.post('/api/auth/register', { email: normalizedEmail, password });
+      const accountId = await resolvePrimaryAccountId(data.accessToken, 1);
+      storeAuthSession(data, normalizedEmail, accountId);
+      onAuthSuccess?.({ token: data.accessToken, email: data.email || normalizedEmail, accountId });
       navigate('/dashboard');
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Blad rejestracji');

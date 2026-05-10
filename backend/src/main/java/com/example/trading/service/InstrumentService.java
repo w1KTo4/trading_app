@@ -25,10 +25,14 @@ public class InstrumentService {
 
     private final InstrumentRepository instrumentRepository;
     private final MarketPriceRepository marketPriceRepository;
+    private final TwelveDataMarketDataService twelveDataMarketDataService;
 
-    public InstrumentService(InstrumentRepository instrumentRepository, MarketPriceRepository marketPriceRepository) {
+    public InstrumentService(InstrumentRepository instrumentRepository,
+                             MarketPriceRepository marketPriceRepository,
+                             TwelveDataMarketDataService twelveDataMarketDataService) {
         this.instrumentRepository = instrumentRepository;
         this.marketPriceRepository = marketPriceRepository;
+        this.twelveDataMarketDataService = twelveDataMarketDataService;
     }
 
     @Transactional(readOnly = true)
@@ -61,6 +65,14 @@ public class InstrumentService {
 
     @Transactional(readOnly = true)
     public List<CandleDto> getCandles(String symbol, String timeframe, int limit) {
+        Instrument instrument = instrumentRepository.findBySymbolIgnoreCase(symbol)
+                .orElseThrow(() -> new NoSuchElementException("Instrument not found: " + symbol));
+
+        List<CandleDto> externalCandles = twelveDataMarketDataService.fetchCandles(instrument, timeframe, limit);
+        if (!externalCandles.isEmpty()) {
+            return externalCandles;
+        }
+
         int bucketSeconds = resolveBucketSeconds(timeframe);
         int maxCandles = Math.min(Math.max(20, limit), 500);
         int rawLimit = Math.min(120000, Math.max(5000, bucketSeconds * maxCandles));

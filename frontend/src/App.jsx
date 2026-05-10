@@ -7,17 +7,48 @@ import Dashboard from './pages/Dashboard';
 import Market from './pages/Market';
 import Portfolio from './pages/Portfolio';
 import Instrument from './pages/Instrument';
-import { WebSocketProvider, useWebSocketData } from './ws/WebSocketProvider';
+import { WebSocketProvider } from './ws/WebSocketProvider';
+import { useWebSocketData } from './ws/useWebSocketData';
+import api from './services/api';
 
 function Layout({ email, accountId, onLogout, children }) {
   const { connected } = useWebSocketData();
+  const [marketDataStatus, setMarketDataStatus] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadMarketStatus = async () => {
+      try {
+        const { data } = await api.get('/api/market/status');
+        if (active) {
+          setMarketDataStatus(data);
+        }
+      } catch {
+        if (active) {
+          setMarketDataStatus(null);
+        }
+      }
+    };
+
+    loadMarketStatus();
+    const intervalId = window.setInterval(loadMarketStatus, 45000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const feedLabel = marketDataStatus?.externalEnabled ? 'Feed: Twelve Data' : 'Feed: Simulator';
+  const modeLabel = marketDataStatus?.externalEnabled ? 'Realtime focus + market snapshots' : 'Symulacja lokalna';
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
           <h1>Trading Station</h1>
-          <p className="muted">Szybsze przejscia, prostsze portfolio i czytelniejszy handel.</p>
+          <p className="muted">Live prices, czytelniejszy trading flow i terminal gotowy do pokazu.</p>
         </div>
         <nav className="nav">
           <NavLink to="/dashboard" className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`}>
@@ -30,6 +61,9 @@ function Layout({ email, accountId, onLogout, children }) {
             Portfolio
           </NavLink>
           <span className={`status-pill ${connected ? 'is-live' : ''}`}>WS: {connected ? 'online' : 'offline'}</span>
+          <span className={`status-pill ${marketDataStatus?.externalEnabled ? 'is-live' : ''}`} title={modeLabel}>
+            {feedLabel}
+          </span>
           <span className="status-pill">Konto #{accountId || 1}</span>
           <span className="status-pill">{email}</span>
           <button className="button ghost" onClick={onLogout}>
@@ -92,7 +126,7 @@ function App() {
       <WebSocketProvider key={wsKey}>
         <Routes>
           <Route path="/login" element={<Login onAuthSuccess={onAuthSuccess} />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Register onAuthSuccess={onAuthSuccess} />} />
 
           <Route
             path="/dashboard"

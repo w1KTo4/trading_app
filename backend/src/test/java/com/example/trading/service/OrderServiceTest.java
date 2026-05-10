@@ -18,6 +18,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import java.math.BigDecimal;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -65,6 +66,7 @@ class OrderServiceTest {
         instrument.setType(InstrumentType.STOCK);
         instrument.setLeverage(1);
         instrument.setLastPrice(new BigDecimal("190"));
+        instrument.setActive(true);
     }
 
     @Test
@@ -99,5 +101,26 @@ class OrderServiceTest {
         ArgumentCaptor<OrderEntity> orderCaptor = ArgumentCaptor.forClass(OrderEntity.class);
         verify(matchingEngineService).executeMarketOrder(orderCaptor.capture(), eq(new BigDecimal("191.50")));
         assertThat(orderCaptor.getValue().getType()).isEqualTo(OrderType.MARKET);
+    }
+
+    @Test
+    void shouldRejectInactiveInstrument() {
+        OrderRequestDto request = new OrderRequestDto();
+        request.setAccountId(10L);
+        request.setSymbol("AAPL");
+        request.setType(OrderType.MARKET);
+        request.setSide(OrderSide.BUY);
+        request.setQuantity(new BigDecimal("1"));
+
+        instrument.setActive(false);
+
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(account));
+        when(instrumentRepository.findBySymbolIgnoreCase("AAPL")).thenReturn(Optional.of(instrument));
+
+        assertThatThrownBy(() -> orderService.placeOrder(request, "test@test.com"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Instrument is not active");
+
+        verifyNoInteractions(matchingEngineService);
     }
 }

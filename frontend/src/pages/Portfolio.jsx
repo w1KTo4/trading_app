@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PositionList from '../components/PositionList';
 import api from '../services/api';
 import { formatUsd } from '../utils/formatters';
+import useMarketFocus from '../hooks/useMarketFocus';
 
 const EMPTY_PORTFOLIO = {
   balance: 0,
@@ -39,63 +40,74 @@ function Portfolio({ accountId, onAccountChange }) {
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const activeAccountIdRef = useRef(accountId);
 
   useEffect(() => {
     setActiveAccountId(accountId);
   }, [accountId]);
 
-  const loadPortfolio = async (preferredAccountId = activeAccountId || accountId) => {
-    if (!preferredAccountId) {
-      return;
-    }
+  useEffect(() => {
+    activeAccountIdRef.current = activeAccountId;
+  }, [activeAccountId]);
 
-    setLoading(true);
-    setError('');
-
-    try {
-      let resolvedAccountId = preferredAccountId;
-      const profileRes = await api.get('/api/auth/me');
-      const profileAccountIds = profileRes.data?.accountIds || [];
-      if (profileAccountIds.length > 0 && !profileAccountIds.includes(preferredAccountId)) {
-        resolvedAccountId = profileAccountIds[0];
-        onAccountChange?.(resolvedAccountId);
+  const loadPortfolio = useCallback(
+    async (preferredAccountId) => {
+      const requestedAccountId = Number(preferredAccountId || activeAccountIdRef.current || accountId || 0);
+      if (!requestedAccountId) {
+        return;
       }
 
-      setActiveAccountId(resolvedAccountId);
+      setLoading(true);
+      setError('');
 
-      const [portfolioRes, tradesRes] = await Promise.allSettled([
-        api.get(`/api/accounts/${resolvedAccountId}/portfolio`),
-        api.get(`/api/accounts/${resolvedAccountId}/trades`),
-      ]);
+      try {
+        let resolvedAccountId = requestedAccountId;
+        const profileRes = await api.get('/api/auth/me');
+        const profileAccountIds = profileRes.data?.accountIds || [];
+        if (profileAccountIds.length > 0 && !profileAccountIds.includes(requestedAccountId)) {
+          resolvedAccountId = profileAccountIds[0];
+          onAccountChange?.(resolvedAccountId);
+        }
 
-      if (portfolioRes.status === 'fulfilled') {
-        setPortfolio(portfolioRes.value.data || EMPTY_PORTFOLIO);
-      } else {
+        setActiveAccountId(resolvedAccountId);
+
+        const [portfolioRes, tradesRes] = await Promise.allSettled([
+          api.get(`/api/accounts/${resolvedAccountId}/portfolio`),
+          api.get(`/api/accounts/${resolvedAccountId}/trades`),
+        ]);
+
+        if (portfolioRes.status === 'fulfilled') {
+          setPortfolio(portfolioRes.value.data || EMPTY_PORTFOLIO);
+        } else {
+          setPortfolio(EMPTY_PORTFOLIO);
+          setError('Nie udalo sie pobrac danych portfela.');
+        }
+
+        if (tradesRes.status === 'fulfilled') {
+          setTrades(Array.isArray(tradesRes.value.data) ? tradesRes.value.data : []);
+        } else {
+          setTrades([]);
+          setError((previous) => previous || 'Nie udalo sie pobrac historii transakcji.');
+        }
+      } catch {
         setPortfolio(EMPTY_PORTFOLIO);
-        setError('Nie udalo sie pobrac danych portfela.');
-      }
-
-      if (tradesRes.status === 'fulfilled') {
-        setTrades(Array.isArray(tradesRes.value.data) ? tradesRes.value.data : []);
-      } else {
         setTrades([]);
-        setError((previous) => previous || 'Nie udalo sie pobrac historii transakcji.');
+        setError('Nie udalo sie pobrac danych portfela.');
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setPortfolio(EMPTY_PORTFOLIO);
-      setTrades([]);
-      setError('Nie udalo sie pobrac danych portfela.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [accountId, onAccountChange],
+  );
 
   useEffect(() => {
     if (!accountId) {
       return;
     }
     loadPortfolio(accountId);
-  }, [accountId]);
+  }, [accountId, loadPortfolio]);
+
+  useMarketFocus((portfolio.positions || []).slice(0, 6).map((position) => position.symbol));
 
   const stats = useMemo(() => {
     const positions = portfolio?.positions || [];
@@ -108,7 +120,8 @@ function Portfolio({ accountId, onAccountChange }) {
       unrealizedPnl,
       freeMargin,
       positionsCount: positions.length,
-      recentTrades: trades.slice(0, 8),
+      recentTrades: trades.slice(0, 10),
+      realizedPnl: sumBy(trades.slice(0, 10), (trade) => trade.realizedPnl),
     };
   }, [portfolio, trades]);
 
@@ -118,10 +131,11 @@ function Portfolio({ accountId, onAccountChange }) {
 
   return (
     <div className="stack">
-      <div className="card quick-actions-bar">
+      <div className="card quick-actions-bar hero-card">
         <div>
+          <p className="eyebrow">Portfolio intelligence</p>
           <h2>Portfolio</h2>
-          <p className="muted">Najwazniejsze liczby konta i ostatnie wyniki bez nadmiaru metryk.</p>
+          <p className="muted">Najwazniejsze liczby konta, ryzyko i wynik ostatnich transakcji.</p>
         </div>
         <div className="quick-links">
           <Link className="button ghost" to="/dashboard">
@@ -133,38 +147,49 @@ function Portfolio({ accountId, onAccountChange }) {
         </div>
       </div>
 
-      <div className="card summary-grid">
-        <div>
+      <div className="summary-grid summary-grid-rich">
+        <div className="card summary-card">
           <p className="muted">Balance</p>
           <h2>{formatUsd(portfolio.balance, 2)}</h2>
+          <span className="summary-note">Kapital gotowkowy na rachunku.</span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Equity</p>
           <h2>{formatUsd(portfolio.equity, 2)}</h2>
+          <span className={`summary-note ${stats.unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+            Open P&L {formatUsd(stats.unrealizedPnl, 2)}
+          </span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Free margin</p>
           <h2>{formatUsd(stats.freeMargin, 2)}</h2>
+          <span className="summary-note">Srodki dostepne do nowych wejsc.</span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Used margin</p>
           <h2>{formatUsd(portfolio.usedMargin, 2)}</h2>
+          <span className="summary-note">Kapital zaangazowany w pozycje.</span>
         </div>
-        <div>
+        <div className="card summary-card">
           <p className="muted">Open positions</p>
           <h2>{stats.positionsCount}</h2>
+          <span className="summary-note">Aktywne ekspozycje do monitorowania.</span>
         </div>
-        <div>
-          <p className="muted">Open P&L</p>
-          <h2 className={stats.unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatUsd(stats.unrealizedPnl, 2)}</h2>
+        <div className="card summary-card">
+          <p className="muted">Recent realized P&L</p>
+          <h2 className={stats.realizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatUsd(stats.realizedPnl, 2)}</h2>
+          <span className="summary-note">Suma z ostatnich 10 trade'ow.</span>
         </div>
       </div>
 
-      <PositionList positions={portfolio.positions || []} showRealized={false} title="Pozycje otwarte" />
+      <PositionList positions={portfolio.positions || []} showExposure showRealized={false} title="Pozycje otwarte" />
 
       <div className="card">
         <div className="panel-head">
-          <h3>Ostatnie transakcje</h3>
+          <div>
+            <h3>Ostatnie transakcje</h3>
+            <p className="muted">Krotka historia wykonanych trade'ow z wynikiem i czasem wejscia.</p>
+          </div>
           <span className="muted">{trades.length}</span>
         </div>
         <div className="table-wrap">
@@ -176,7 +201,7 @@ function Portfolio({ accountId, onAccountChange }) {
                 <th>Side</th>
                 <th>Qty</th>
                 <th>Cena (USD)</th>
-                <th>P&L</th>
+                <th>P&amp;L</th>
               </tr>
             </thead>
             <tbody>
@@ -188,7 +213,9 @@ function Portfolio({ accountId, onAccountChange }) {
               {stats.recentTrades.map((trade) => (
                 <tr key={trade.id}>
                   <td>{formatDateTime(trade.executedAt)}</td>
-                  <td>{trade.symbol}</td>
+                  <td>
+                    <strong>{trade.symbol}</strong>
+                  </td>
                   <td>
                     <span className={`trade-side ${trade.side === 'BUY' ? 'buy' : 'sell'}`}>{trade.side}</span>
                   </td>

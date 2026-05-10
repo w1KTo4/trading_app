@@ -15,6 +15,7 @@ com\example\trading\service\MatchingEngineService.class
 com\example\trading\config\WebSocketConfig.class
 com\example\trading\dto\OrderResponseDto.class
 com\example\trading\repository\PositionRepository.class
+com\example\trading\service\TwelveDataMarketDataService$1.class
 com\example\trading\dto\UserProfileDto.class
 com\example\trading\entity\Position.class
 com\example\trading\dto\TradeResponseDto.class

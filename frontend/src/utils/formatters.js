@@ -32,3 +32,22 @@ export const formatPercent = (value, digits = 2) => {
   }
   return `${numeric.toFixed(digits)}%`;
 };
+
+export const formatPriceSource = (source, connected = false) => {
+  const normalized = String(source || '').trim().toUpperCase();
+
+  switch (normalized) {
+    case 'TWELVE_DATA':
+      return 'Twelve Data';
+    case 'SIMULATOR':
+      return 'Simulator';
+    case 'DB':
+      return 'Database snapshot';
+    case 'MARKET SNAPSHOT':
+      return 'Live snapshot';
+    case 'SNAPSHOT':
+      return connected ? 'Live snapshot' : 'Snapshot';
+    default:
+      return normalized || (connected ? 'Live snapshot' : 'Snapshot');
+  }
+};

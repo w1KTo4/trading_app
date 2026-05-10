@@ -1,9 +1,17 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { apiBaseUrl } from '../services/api';
+import { WebSocketContext } from './WebSocketContext';
 
-const WebSocketContext = createContext(null);
+const buildOrderEventKey = (event = {}) =>
+  [event.orderId ?? event.id ?? '', event.status ?? '', event.filledPrice ?? '', event.symbol ?? ''].join('|');
+
+const appendOrderEvent = (previousEvents, nextEvent) => {
+  const nextKey = buildOrderEventKey(nextEvent);
+  const deduped = previousEvents.filter((event) => buildOrderEventKey(event) !== nextKey);
+  return [nextEvent, ...deduped].slice(0, 50);
+};
 
 const resolveWsUrl = () => {
   const normalizeForSockJs = (url = '') => {
@@ -68,13 +76,13 @@ export function WebSocketProvider({ children }) {
 
         client.subscribe('/user/queue/orders', (message) => {
           const event = JSON.parse(message.body);
-          setOrderEvents((prev) => [event, ...prev].slice(0, 50));
+          setOrderEvents((prev) => appendOrderEvent(prev, event));
         });
 
         if (email) {
           client.subscribe(`/topic/orders/${email}`, (message) => {
             const event = JSON.parse(message.body);
-            setOrderEvents((prev) => [event, ...prev].slice(0, 50));
+            setOrderEvents((prev) => appendOrderEvent(prev, event));
           });
         }
       },
@@ -98,11 +106,3 @@ export function WebSocketProvider({ children }) {
 
   return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>;
 }
-
-export const useWebSocketData = () => {
-  const context = useContext(WebSocketContext);
-  if (!context) {
-    throw new Error('useWebSocketData must be used within WebSocketProvider');
-  }
-  return context;
-};

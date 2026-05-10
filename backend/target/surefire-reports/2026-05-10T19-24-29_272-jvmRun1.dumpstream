@@ -1,0 +1,15 @@
+# Created at 2026-05-10T19:24:29.753
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '#'.
+
+# Created at 2026-05-10T19:24:29.756
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# There is insufficient memory for the Java Runtime Environment to continue.'.
+
+# Created at 2026-05-10T19:24:29.758
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# Native memory allocation (malloc) failed to allocate 1048576 bytes. Error detail: AllocateHeap'.
+
+# Created at 2026-05-10T19:24:29.760
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# An error report file with more information is saved as:'.
+
+# Created at 2026-05-10T19:24:29.792
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '# C:\Users\marru\OneDrive\Pulpit\trading_app\backend\hs_err_pid5340.log'.
+

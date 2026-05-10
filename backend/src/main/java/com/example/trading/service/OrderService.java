@@ -62,6 +62,9 @@ public class OrderService {
 
         Instrument instrument = instrumentRepository.findBySymbolIgnoreCase(dto.getSymbol())
                 .orElseThrow(() -> new NoSuchElementException("Instrument not found: " + dto.getSymbol()));
+        if (!Boolean.TRUE.equals(instrument.getActive())) {
+            throw new IllegalStateException("Instrument is not active");
+        }
 
         BigDecimal currentPrice = marketSimulatorService.getCurrentPrice(instrument.getSymbol())
                 .orElse(instrument.getLastPrice());

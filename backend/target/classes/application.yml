@@ -29,3 +29,11 @@ jwt:
 logging:
   level:
     org.springframework.security: INFO
+
+market-data:
+  api-key: ${TWELVE_DATA_API_KEY:}
+  base-url: ${TWELVE_DATA_BASE_URL:https://api.twelvedata.com}
+  focus-poll-delay-ms: ${MARKET_DATA_FOCUS_POLL_DELAY_MS:5000}
+  universe-poll-delay-ms: ${MARKET_DATA_UNIVERSE_POLL_DELAY_MS:60000}
+  focus-ttl-seconds: ${MARKET_DATA_FOCUS_TTL_SECONDS:120}
+  max-focus-symbols: ${MARKET_DATA_MAX_FOCUS_SYMBOLS:8}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import { formatUsd } from '../utils/formatters';
 
@@ -26,10 +26,11 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
 
   const numericQuantity = Number(quantity);
   const referencePrice = useMemo(() => {
+    const fallbackPrice = Number(lastPrice);
     if (type === 'LIMIT') {
-      return toNumberOrNull(limitPrice) ?? Number(lastPrice) ?? 0;
+      return toNumberOrNull(limitPrice) ?? (Number.isFinite(fallbackPrice) ? fallbackPrice : 0);
     }
-    return Number(lastPrice) || 0;
+    return Number.isFinite(fallbackPrice) ? fallbackPrice : 0;
   }, [lastPrice, limitPrice, type]);
   const estimatedValue = useMemo(() => {
     if (!Number.isFinite(numericQuantity) || numericQuantity <= 0 || !Number.isFinite(referencePrice) || referencePrice <= 0) {
@@ -37,7 +38,59 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
     }
     return numericQuantity * referencePrice;
   }, [numericQuantity, referencePrice]);
-  const canSubmit = useMemo(() => numericQuantity > 0 && accountId, [numericQuantity, accountId]);
+  const hasReferencePrice = Number.isFinite(referencePrice) && referencePrice > 0;
+  const hasValidLimitPrice = useMemo(() => (type !== 'LIMIT' ? true : (toNumberOrNull(limitPrice) ?? 0) > 0), [limitPrice, type]);
+  const canSubmit = useMemo(() => {
+    if (!accountId || !Number.isFinite(numericQuantity) || numericQuantity <= 0) {
+      return false;
+    }
+    if (type === 'LIMIT') {
+      return hasValidLimitPrice;
+    }
+    return hasReferencePrice;
+  }, [accountId, hasReferencePrice, hasValidLimitPrice, numericQuantity, type]);
+  const canQuickTrade = useMemo(() => accountId && Number.isFinite(numericQuantity) && numericQuantity > 0 && hasReferencePrice, [
+    accountId,
+    hasReferencePrice,
+    numericQuantity,
+  ]);
+  const positionDirection = Number(position?.quantity || 0) >= 0 ? 'LONG' : 'SHORT';
+  const currentPositionQuantity = Number(position?.quantity || 0);
+  const currentPositionAbs = Math.abs(currentPositionQuantity);
+  const stopLossDistance = useMemo(() => {
+    const nextStopLoss = toNumberOrNull(stopLoss);
+    if (nextStopLoss == null || !referencePrice) {
+      return null;
+    }
+    return side === 'BUY' ? referencePrice - nextStopLoss : nextStopLoss - referencePrice;
+  }, [referencePrice, side, stopLoss]);
+  const takeProfitDistance = useMemo(() => {
+    const nextTakeProfit = toNumberOrNull(takeProfit);
+    if (nextTakeProfit == null || !referencePrice) {
+      return null;
+    }
+    return side === 'BUY' ? nextTakeProfit - referencePrice : referencePrice - nextTakeProfit;
+  }, [referencePrice, side, takeProfit]);
+  const orderIntentLabel = useMemo(() => {
+    if (!position || currentPositionQuantity === 0) {
+      return side === 'BUY' ? 'Nowa lub powiekszona pozycja long' : 'Nowa lub powiekszona pozycja short';
+    }
+    if (currentPositionQuantity > 0) {
+      return side === 'BUY' ? 'Powiekszenie longa' : 'Redukcja albo odwrocenie longa';
+    }
+    return side === 'SELL' ? 'Powiekszenie shorta' : 'Redukcja albo odwrocenie shorta';
+  }, [currentPositionQuantity, position, side]);
+
+  useEffect(() => {
+    setSide('BUY');
+    setType('MARKET');
+    setQuantity('1');
+    setLimitPrice('');
+    setTakeProfit('');
+    setStopLoss('');
+    setError('');
+    setSuccess('');
+  }, [symbol]);
 
   const validateOrder = () => {
     if (!accountId) {
@@ -136,6 +189,16 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
       setSuccess('');
       return;
     }
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0) {
+      setError('Podaj dodatnia ilosc.');
+      setSuccess('');
+      return;
+    }
+    if (!hasReferencePrice) {
+      setError('Brak aktualnej ceny referencyjnej do zlecenia rynkowego.');
+      setSuccess('');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -161,26 +224,26 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
     <div className="card trade-card">
       <div className="panel-head">
         <div>
-          <h3>Zlecenie</h3>
+          <h3>Order Ticket</h3>
           <p className="muted">
             {symbol} - cena orientacyjna {formatUsd(referencePrice || lastPrice || 0, 4)}
           </p>
         </div>
         <span className={`status-pill ${position ? 'is-live' : ''}`}>
-          {position ? `Pozycja: ${Number(position.quantity).toFixed(2)}` : 'Brak pozycji'}
+          {position ? `${positionDirection} ${currentPositionAbs.toFixed(2)}` : 'Brak pozycji'}
         </span>
       </div>
 
-      <div className="segmented-control">
+      <div className="segmented-control side-toggle">
         <button
-          className={`button ghost segment-btn ${side === 'BUY' ? 'active-tab' : ''}`}
+          className={`button ghost segment-btn segment-buy ${side === 'BUY' ? 'is-side-active' : ''}`}
           type="button"
           onClick={() => setSide('BUY')}
         >
           BUY
         </button>
         <button
-          className={`button ghost segment-btn ${side === 'SELL' ? 'active-tab' : ''}`}
+          className={`button ghost segment-btn segment-sell ${side === 'SELL' ? 'is-side-active' : ''}`}
           type="button"
           onClick={() => setSide('SELL')}
         >
@@ -188,43 +251,45 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
         </button>
       </div>
 
-      <form className="form-grid" onSubmit={submitOrder}>
-        <label>
-          Typ zlecenia
-          <select value={type} onChange={(event) => setType(event.target.value)}>
-            <option value="MARKET">MARKET</option>
-            <option value="LIMIT">LIMIT</option>
-          </select>
-        </label>
-
-        <label>
-          Ilosc
-          <input type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-        </label>
-
-        {type === 'LIMIT' && (
+      <form className="trade-form" onSubmit={submitOrder}>
+        <div className="form-grid">
           <label>
-            Cena LIMIT
-            <input
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              value={limitPrice}
-              placeholder={String(Number(lastPrice || 0).toFixed(4))}
-              onChange={(event) => setLimitPrice(event.target.value)}
-            />
+            Typ zlecenia
+            <select value={type} onChange={(event) => setType(event.target.value)}>
+              <option value="MARKET">MARKET</option>
+              <option value="LIMIT">LIMIT</option>
+            </select>
           </label>
-        )}
 
-        <label>
-          Take profit
-          <input type="number" min="0.0001" step="0.0001" value={takeProfit} onChange={(event) => setTakeProfit(event.target.value)} />
-        </label>
+          <label>
+            Ilosc
+            <input type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          </label>
 
-        <label>
-          Stop loss
-          <input type="number" min="0.0001" step="0.0001" value={stopLoss} onChange={(event) => setStopLoss(event.target.value)} />
-        </label>
+          {type === 'LIMIT' && (
+            <label>
+              Cena LIMIT
+              <input
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={limitPrice}
+                placeholder={String(Number(lastPrice || 0).toFixed(4))}
+                onChange={(event) => setLimitPrice(event.target.value)}
+              />
+            </label>
+          )}
+
+          <label>
+            Take profit
+            <input type="number" min="0.0001" step="0.0001" value={takeProfit} onChange={(event) => setTakeProfit(event.target.value)} />
+          </label>
+
+          <label>
+            Stop loss
+            <input type="number" min="0.0001" step="0.0001" value={stopLoss} onChange={(event) => setStopLoss(event.target.value)} />
+          </label>
+        </div>
 
         <div className="order-presets">
           <span className="muted">Szybka ilosc</span>
@@ -237,16 +302,41 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
           </div>
         </div>
 
-        <div className="order-summary">
+        <div className="order-summary trade-summary-grid">
           <div>
-            <p className="muted">Wartosc orientacyjna</p>
+            <p className="muted">Wartosc pozycji</p>
             <strong>{formatUsd(estimatedValue, 2)}</strong>
           </div>
           <div>
             <p className="muted">Tryb</p>
-            <strong>{type === 'MARKET' ? 'Wykonanie od razu' : 'Oczekiwanie na limit'}</strong>
+            <strong>{type === 'MARKET' ? 'Natychmiastowe wykonanie' : 'Wejscie po limicie'}</strong>
+          </div>
+          <div>
+            <p className="muted">Ryzyko do SL</p>
+            <strong>{stopLossDistance != null && stopLossDistance > 0 ? formatUsd(stopLossDistance * numericQuantity, 2) : '-'}</strong>
+          </div>
+          <div>
+            <p className="muted">Potencjalny TP</p>
+            <strong>{takeProfitDistance != null && takeProfitDistance > 0 ? formatUsd(takeProfitDistance * numericQuantity, 2) : '-'}</strong>
           </div>
         </div>
+
+        <p className="muted">{orderIntentLabel}</p>
+
+        {position && (
+          <div className="position-context-card">
+            <div>
+              <p className="muted">Srednia wejscia</p>
+              <strong>{formatUsd(position.averagePrice, 4)}</strong>
+            </div>
+            <div>
+              <p className="muted">Open P&L</p>
+              <strong className={Number(position.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
+                {formatUsd(position.unrealizedPnl, 2)}
+              </strong>
+            </div>
+          </div>
+        )}
 
         {error && <p className="error">{error}</p>}
         {success && <p className="success-text">{success}</p>}
@@ -255,10 +345,10 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
           <button className="button" type="submit" disabled={!canSubmit || loading}>
             {loading ? 'Wysylanie...' : type === 'MARKET' ? 'Zloz zlecenie rynkowe' : 'Zloz zlecenie LIMIT'}
           </button>
-          <button className="button ghost" type="button" onClick={() => quickMarketOrder('BUY')} disabled={!canSubmit || loading}>
+          <button className="button ghost action-buy" type="button" onClick={() => quickMarketOrder('BUY')} disabled={!canQuickTrade || loading}>
             Kup po rynku
           </button>
-          <button className="button ghost" type="button" onClick={() => quickMarketOrder('SELL')} disabled={!canSubmit || loading}>
+          <button className="button ghost action-sell" type="button" onClick={() => quickMarketOrder('SELL')} disabled={!canQuickTrade || loading}>
             Sprzedaj po rynku
           </button>
         </div>

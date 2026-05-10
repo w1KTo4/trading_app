@@ -21,7 +21,15 @@ const toUnixTime = (time) => {
   return Math.floor(parsed / 1000);
 };
 
-function Chart({ candles = [], points = [], symbol = 'N/A', timeframe = '15m', embedded = false }) {
+function Chart({
+  candles = [],
+  points = [],
+  symbol = 'N/A',
+  timeframe = '15m',
+  embedded = false,
+  livePrice = 0,
+  priceSource = 'SNAPSHOT',
+}) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -103,6 +111,12 @@ function Chart({ candles = [], points = [], symbol = 'N/A', timeframe = '15m', e
       localization: {
         priceFormatter: (value) => `$${Number(value).toFixed(4)}`,
       },
+      watermark: {
+        visible: true,
+        text: `${symbol} ${timeframe.toUpperCase()}`,
+        color: 'rgba(167, 186, 213, 0.08)',
+        fontSize: 26,
+      },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
@@ -129,7 +143,7 @@ function Chart({ candles = [], points = [], symbol = 'N/A', timeframe = '15m', e
       chartRef.current = null;
       chart.remove();
     };
-  }, [timeframe]);
+  }, [symbol, timeframe]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -161,9 +175,18 @@ function Chart({ candles = [], points = [], symbol = 'N/A', timeframe = '15m', e
 
   return (
     <div className="card chart-card">
-      <h3>
-        Wykres {symbol} ({timeframe.toUpperCase()})
-      </h3>
+      <div className="panel-head">
+        <div>
+          <h3>
+            Wykres {symbol} ({timeframe.toUpperCase()})
+          </h3>
+          <p className="muted">Feed: {priceSource}</p>
+        </div>
+        <div className="live-price-block">
+          <div className="live-price">{Number.isFinite(Number(livePrice)) ? `$${Number(livePrice).toFixed(4)}` : '$0.0000'}</div>
+          <small className="muted">Cena live</small>
+        </div>
+      </div>
       {content}
     </div>
   );

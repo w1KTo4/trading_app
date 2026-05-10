@@ -30,6 +30,26 @@ npm run dev
 
 Backend domyslnie dziala na `http://localhost:8080`, frontend na `http://localhost:5173`.
 
+## Prawdziwe ceny live
+
+Aplikacja wspiera teraz tryb hybrydowy:
+- bez klucza `TWELVE_DATA_API_KEY` backend korzysta z lokalnego symulatora cen,
+- po ustawieniu `TWELVE_DATA_API_KEY` backend pobiera prawdziwe ceny rynkowe z Twelve Data dla wspieranych symboli i podbija nimi wykresy oraz ticki live,
+- aktywnie oglądane symbole sa synchronizowane z frontu do backendu jako `focus symbols`, zeby dostawaly priorytetowe odswiezanie.
+
+Przyklad uruchomienia backendu z feedem live:
+
+```powershell
+$env:TWELVE_DATA_API_KEY="twoj_klucz_api"
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+Uwagi:
+- akcje i ETF-y dzialaja po symbolu bez zmian, np. `AAPL`, `MSFT`, `SPY`,
+- forex, krypto i metale sa mapowane do formatu typu `EUR/USD`, `BTC/USD`, `XAU/USD`,
+- czesc indeksow i surowcow korzysta z mapowania do symboli Twelve Data, a niewspierane instrumenty zostaja na fallbacku symulacyjnym.
+
 ## Zmiana danych logowania do MySQL
 
 Jesli w XAMPP masz inne dane niz `root` i puste haslo, ustaw zmienne srodowiskowe przed startem backendu.

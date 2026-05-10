@@ -3,82 +3,51 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../services/api';
 import Chart from '../components/Chart';
 import OrderForm from '../components/OrderForm';
-import { useWebSocketData } from '../ws/WebSocketProvider';
-import { formatUsd } from '../utils/formatters';
+import { useWebSocketData } from '../ws/useWebSocketData';
+import { formatPriceSource, formatUsd } from '../utils/formatters';
+import useMarketFocus from '../hooks/useMarketFocus';
+import useInstrumentCandles from '../hooks/useInstrumentCandles';
 
 const INSTRUMENT_TIMEFRAME = '15m';
-const INSTRUMENT_FRAME_MS = 15 * 60 * 1000;
 const INSTRUMENT_CANDLE_LIMIT = 200;
-
-const normalizeCandle = (candle) => ({
-  time: candle.time,
-  open: Number(candle.open),
-  high: Number(candle.high),
-  low: Number(candle.low),
-  close: Number(candle.close),
-});
-
-const updateCandlesWithTick = (previousCandles, nextPrice) => {
-  const nowMs = Date.now();
-  const bucketMs = Math.floor(nowMs / INSTRUMENT_FRAME_MS) * INSTRUMENT_FRAME_MS;
-  const bucketIso = new Date(bucketMs).toISOString();
-  const price = Number(nextPrice);
-  if (Number.isNaN(price)) {
-    return previousCandles;
-  }
-  if (previousCandles.length === 0) {
-    return [{ time: bucketIso, open: price, high: price, low: price, close: price }];
-  }
-
-  const next = [...previousCandles];
-  const last = next[next.length - 1];
-  const lastBucket = Math.floor(new Date(last.time).getTime() / INSTRUMENT_FRAME_MS) * INSTRUMENT_FRAME_MS;
-
-  if (lastBucket === bucketMs) {
-    next[next.length - 1] = {
-      ...last,
-      high: Math.max(Number(last.high), price),
-      low: Math.min(Number(last.low), price),
-      close: price,
-    };
-    return next;
-  }
-
-  next.push({ time: bucketIso, open: price, high: price, low: price, close: price });
-  if (next.length > INSTRUMENT_CANDLE_LIMIT) {
-    return next.slice(next.length - INSTRUMENT_CANDLE_LIMIT);
-  }
-  return next;
-};
 
 function Instrument({ accountId }) {
   const { symbol } = useParams();
-  const { latestPrices, orderEvents } = useWebSocketData();
+  const { latestPrices, orderEvents, connected } = useWebSocketData();
   const [instrument, setInstrument] = useState(null);
-  const [candles, setCandles] = useState([]);
   const [message, setMessage] = useState('');
 
-  const currentLivePrice = latestPrices[symbol]?.price;
+  const currentTick = latestPrices[symbol];
+  const currentLivePrice = currentTick?.price;
+  const currentSource = formatPriceSource(currentTick?.source || 'SNAPSHOT', connected);
+  const { candles } = useInstrumentCandles({
+    symbol,
+    timeframe: INSTRUMENT_TIMEFRAME,
+    limit: INSTRUMENT_CANDLE_LIMIT,
+    livePrice: currentLivePrice,
+  });
+  useMarketFocus([symbol]);
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
-      const [instrumentRes, candlesRes] = await Promise.all([
-        api.get(`/api/instruments/${symbol}`),
-        api.get(`/api/instruments/${symbol}/candles?timeframe=${INSTRUMENT_TIMEFRAME}&limit=${INSTRUMENT_CANDLE_LIMIT}`),
-      ]);
-      setInstrument(instrumentRes.data);
-      setCandles(candlesRes.data.map(normalizeCandle));
+      const instrumentRes = await api.get(`/api/instruments/${symbol}`);
+      if (active) {
+        setInstrument(instrumentRes.data);
+      }
     };
 
-    load().catch(() => setInstrument(null));
-  }, [symbol]);
+    load().catch(() => {
+      if (active) {
+        setInstrument(null);
+      }
+    });
 
-  useEffect(() => {
-    if (currentLivePrice == null) {
-      return;
-    }
-    setCandles((prev) => updateCandlesWithTick(prev, currentLivePrice));
-  }, [currentLivePrice, symbol]);
+    return () => {
+      active = false;
+    };
+  }, [symbol]);
 
   useEffect(() => {
     if (orderEvents[0]) {
@@ -88,15 +57,15 @@ function Instrument({ accountId }) {
 
   return (
     <div className="stack">
-      <div className="card quick-actions-bar">
+      <div className="card quick-actions-bar hero-card">
         <div>
+          <p className="eyebrow">Instrument focus</p>
           <h2>{instrument?.symbol || symbol}</h2>
-          <p className="muted">{instrument?.name || 'Widok instrumentu'}</p>
-          <p>
-            Cena live (USD): <strong>{formatUsd(currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}</strong>
-          </p>
+          <p className="muted">{instrument?.name || 'Pelny widok instrumentu'}</p>
         </div>
         <div className="quick-links">
+          <span className={`status-pill ${connected ? 'is-live' : ''}`}>{currentSource}</span>
+          <span className="status-pill">{formatUsd(currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}</span>
           <Link className="button ghost" to="/dashboard">
             Wroc do terminala
           </Link>
@@ -106,19 +75,58 @@ function Instrument({ accountId }) {
         </div>
       </div>
 
-      <Chart candles={candles} symbol={symbol} timeframe={INSTRUMENT_TIMEFRAME} />
-      <OrderForm
-        symbol={symbol}
-        accountId={accountId}
-        lastPrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
-        onOrderPlaced={(order) =>
-          setMessage(
-            order.status === 'FILLED'
-              ? `Zlecenie #${order.id} wykonane po ${formatUsd(order.filledPrice ?? currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}.`
-              : `Zlecenie #${order.id} ${order.status}.`,
-          )
-        }
-      />
+      <div className="instrument-layout">
+        <div className="instrument-main">
+          <Chart
+            candles={candles}
+            symbol={symbol}
+            timeframe={INSTRUMENT_TIMEFRAME}
+            livePrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
+            priceSource={currentSource}
+          />
+        </div>
+
+        <div className="instrument-side">
+          <OrderForm
+            symbol={symbol}
+            accountId={accountId}
+            lastPrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
+            onOrderPlaced={(order) =>
+              setMessage(
+                order.status === 'FILLED'
+                  ? `Zlecenie #${order.id} wykonane po ${formatUsd(order.filledPrice ?? currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}.`
+                  : `Zlecenie #${order.id} ${order.status}.`,
+              )
+            }
+          />
+
+          <div className="card order-context-card">
+            <div className="panel-head">
+              <h3>Snapshot</h3>
+              <span className="muted">{instrument?.type || 'N/A'}</span>
+            </div>
+            <div className="mini-stat-grid">
+              <div className="mini-stat">
+                <p className="muted">Cena live</p>
+                <strong>{formatUsd(currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Leverage</p>
+                <strong>{instrument?.leverage || 1}x</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Source</p>
+                <strong>{currentSource}</strong>
+              </div>
+              <div className="mini-stat">
+                <p className="muted">Interwal</p>
+                <strong>{INSTRUMENT_TIMEFRAME.toUpperCase()}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {message && <p className="card">{message}</p>}
     </div>
   );
