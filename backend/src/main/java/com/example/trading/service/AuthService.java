@@ -54,8 +54,8 @@ public class AuthService {
 
         Account account = new Account();
         account.setUser(saved);
-        account.setBalance(new BigDecimal("100000.0000"));
-        account.setEquity(new BigDecimal("100000.0000"));
+        account.setBalance(new BigDecimal("0.0000"));
+        account.setEquity(new BigDecimal("0.0000"));
         accountRepository.save(account);
 
         return issueTokens(saved.getEmail());

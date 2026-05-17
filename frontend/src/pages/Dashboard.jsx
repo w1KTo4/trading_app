@@ -5,7 +5,7 @@ import Chart from '../components/Chart';
 import OrderForm from '../components/OrderForm';
 import api from '../services/api';
 import { useWebSocketData } from '../ws/useWebSocketData';
-import { formatPriceSource, formatUsd } from '../utils/formatters';
+import { formatPln, formatPriceSource, formatUsd } from '../utils/formatters';
 import useMarketFocus from '../hooks/useMarketFocus';
 import useInstrumentCandles from '../hooks/useInstrumentCandles';
 
@@ -45,7 +45,7 @@ const getInstrumentCategory = (instrument) => {
 };
 
 function Dashboard({ accountId, onAccountChange }) {
-  const { latestPrices, connected } = useWebSocketData();
+  const { latestPrices, connected, paymentEvents } = useWebSocketData();
   const [activeAccountId, setActiveAccountId] = useState(accountId);
   const [portfolio, setPortfolio] = useState(EMPTY_PORTFOLIO);
   const [orders, setOrders] = useState([]);
@@ -58,6 +58,7 @@ function Dashboard({ accountId, onAccountChange }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const activeAccountIdRef = useRef(accountId);
+  const lastPaymentEventRef = useRef('');
   const [favoriteSymbols, setFavoriteSymbols] = useState(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY) || '[]');
@@ -204,6 +205,34 @@ function Dashboard({ accountId, onAccountChange }) {
     loadTerminalData(accountId);
   }, [accountId, loadTerminalData]);
 
+  useEffect(() => {
+    const latestEvent = paymentEvents?.[0];
+    if (!latestEvent) {
+      return;
+    }
+
+    const eventKey = [
+      latestEvent.type ?? '',
+      latestEvent.correlationId ?? '',
+      latestEvent.status ?? '',
+      latestEvent.amount ?? '',
+      latestEvent.balanceAfter ?? '',
+      latestEvent.createdAt ?? '',
+      latestEvent.receivedAt ?? '',
+    ].join('|');
+
+    if (!eventKey || eventKey === lastPaymentEventRef.current) {
+      return;
+    }
+
+    if (latestEvent.accountId && Number(latestEvent.accountId) !== Number(activeAccountIdRef.current)) {
+      return;
+    }
+
+    lastPaymentEventRef.current = eventKey;
+    loadTerminalData(activeAccountIdRef.current);
+  }, [loadTerminalData, paymentEvents]);
+
   const toggleFavorite = (symbol) => {
     setFavoriteSymbols((previous) =>
       previous.includes(symbol) ? previous.filter((item) => item !== symbol) : [...previous, symbol],
@@ -249,17 +278,17 @@ function Dashboard({ accountId, onAccountChange }) {
       <div className="summary-grid summary-grid-rich">
         <div className="card summary-card">
           <p className="muted">Balance</p>
-          <h2>{formatUsd(portfolio.balance, 2)}</h2>
+          <h2>{formatPln(portfolio.balance, 2)}</h2>
           <span className="summary-note">Kapital bazowy bez otwartego P&L.</span>
         </div>
         <div className="card summary-card">
           <p className="muted">Equity</p>
-          <h2>{formatUsd(portfolio.equity, 2)}</h2>
-          <span className={`summary-note ${openPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>Open P&L {formatUsd(openPnl, 2)}</span>
+          <h2>{formatPln(portfolio.equity, 2)}</h2>
+          <span className={`summary-note ${openPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>Open P&L {formatPln(openPnl, 2)}</span>
         </div>
         <div className="card summary-card">
           <p className="muted">Free margin</p>
-          <h2>{formatUsd(freeMargin, 2)}</h2>
+          <h2>{formatPln(freeMargin, 2)}</h2>
           <span className="summary-note">Margin level {Number.isFinite(marginLevel) ? `${marginLevel.toFixed(0)}%` : 'n/a'}</span>
         </div>
         <div className="card summary-card">
@@ -407,7 +436,7 @@ function Dashboard({ accountId, onAccountChange }) {
             <div className="info-chip">
               <p className="muted">Open P&L</p>
               <strong className={Number(selectedPosition?.unrealizedPnl || 0) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                {formatUsd(selectedPosition?.unrealizedPnl || 0, 2)}
+                {formatPln(selectedPosition?.unrealizedPnl || 0, 2)}
               </strong>
             </div>
             <div className="info-chip">
@@ -450,11 +479,11 @@ function Dashboard({ accountId, onAccountChange }) {
               </div>
               <div className="mini-stat">
                 <p className="muted">Used margin</p>
-                <strong>{formatUsd(portfolio.usedMargin, 2)}</strong>
+                <strong>{formatPln(portfolio.usedMargin, 2)}</strong>
               </div>
               <div className="mini-stat">
                 <p className="muted">Free margin</p>
-                <strong>{formatUsd(freeMargin, 2)}</strong>
+                <strong>{formatPln(freeMargin, 2)}</strong>
               </div>
             </div>
           </div>

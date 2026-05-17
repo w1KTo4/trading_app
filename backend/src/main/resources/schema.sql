@@ -1,6 +1,8 @@
 DROP TABLE IF EXISTS trades;
 DROP TABLE IF EXISTS positions;
 DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS wallet_transactions;
+DROP TABLE IF EXISTS payment_requests;
 DROP TABLE IF EXISTS market_prices;
 DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS instruments;
@@ -96,5 +98,38 @@ CREATE TABLE market_prices (
     CONSTRAINT fk_market_prices_instrument FOREIGN KEY (instrument_id) REFERENCES instruments(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE payment_requests (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_id BIGINT NOT NULL,
+    correlation_id VARCHAR(120) NOT NULL,
+    code_masked VARCHAR(32),
+    amount NUMERIC(19,4) NOT NULL,
+    status VARCHAR(24) NOT NULL,
+    store_name VARCHAR(120) NOT NULL,
+    provider_request_id VARCHAR(120),
+    source VARCHAR(32) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    finalized_at DATETIME(6),
+    CONSTRAINT uk_payment_requests_correlation UNIQUE (correlation_id),
+    CONSTRAINT fk_payment_requests_account FOREIGN KEY (account_id) REFERENCES accounts(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE wallet_transactions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_id BIGINT NOT NULL,
+    type VARCHAR(24) NOT NULL,
+    amount NUMERIC(19,4) NOT NULL,
+    balance_before NUMERIC(19,4) NOT NULL,
+    balance_after NUMERIC(19,4) NOT NULL,
+    source VARCHAR(32) NOT NULL,
+    correlation_id VARCHAR(120),
+    note VARCHAR(255),
+    created_at DATETIME(6) NOT NULL,
+    CONSTRAINT fk_wallet_transactions_account FOREIGN KEY (account_id) REFERENCES accounts(id)
+) ENGINE=InnoDB;
+
 CREATE INDEX idx_orders_account_id ON orders(account_id);
 CREATE INDEX idx_market_prices_symbol_ts ON market_prices(symbol, ts);
+CREATE INDEX idx_payment_requests_account_created ON payment_requests(account_id, created_at);
+CREATE INDEX idx_wallet_transactions_account_created ON wallet_transactions(account_id, created_at);

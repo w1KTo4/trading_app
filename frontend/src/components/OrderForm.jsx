@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
-import { formatUsd } from '../utils/formatters';
+import { formatPln, formatUsd } from '../utils/formatters';
 
 const SIZE_PRESETS = ['0.1', '1', '5'];
 
@@ -305,7 +305,7 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
         <div className="order-summary trade-summary-grid">
           <div>
             <p className="muted">Wartosc pozycji</p>
-            <strong>{formatUsd(estimatedValue, 2)}</strong>
+            <strong>{formatPln(estimatedValue, 2)}</strong>
           </div>
           <div>
             <p className="muted">Tryb</p>
@@ -313,11 +313,11 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
           </div>
           <div>
             <p className="muted">Ryzyko do SL</p>
-            <strong>{stopLossDistance != null && stopLossDistance > 0 ? formatUsd(stopLossDistance * numericQuantity, 2) : '-'}</strong>
+            <strong>{stopLossDistance != null && stopLossDistance > 0 ? formatPln(stopLossDistance * numericQuantity, 2) : '-'}</strong>
           </div>
           <div>
             <p className="muted">Potencjalny TP</p>
-            <strong>{takeProfitDistance != null && takeProfitDistance > 0 ? formatUsd(takeProfitDistance * numericQuantity, 2) : '-'}</strong>
+            <strong>{takeProfitDistance != null && takeProfitDistance > 0 ? formatPln(takeProfitDistance * numericQuantity, 2) : '-'}</strong>
           </div>
         </div>
 
@@ -332,7 +332,7 @@ function OrderForm({ symbol, accountId, lastPrice = 0, position = null, onOrderP
             <div>
               <p className="muted">Open P&L</p>
               <strong className={Number(position.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                {formatUsd(position.unrealizedPnl, 2)}
+                {formatPln(position.unrealizedPnl, 2)}
               </strong>
             </div>
           </div>

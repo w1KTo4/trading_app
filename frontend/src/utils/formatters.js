@@ -1,14 +1,14 @@
 const formatterCache = new Map();
 
-const getUsdFormatter = (digits) => {
+const getCurrencyFormatter = (currency, locale, digits) => {
   const normalizedDigits = Number.isInteger(digits) ? Math.max(0, Math.min(8, digits)) : 2;
-  const cacheKey = String(normalizedDigits);
+  const cacheKey = `${locale}:${currency}:${normalizedDigits}`;
   if (!formatterCache.has(cacheKey)) {
     formatterCache.set(
       cacheKey,
-      new Intl.NumberFormat('en-US', {
+      new Intl.NumberFormat(locale, {
         style: 'currency',
-        currency: 'USD',
+        currency,
         minimumFractionDigits: normalizedDigits,
         maximumFractionDigits: normalizedDigits,
       }),
@@ -20,9 +20,17 @@ const getUsdFormatter = (digits) => {
 export const formatUsd = (value, digits = 2) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return getUsdFormatter(digits).format(0);
+    return getCurrencyFormatter('USD', 'en-US', digits).format(0);
   }
-  return getUsdFormatter(digits).format(numeric);
+  return getCurrencyFormatter('USD', 'en-US', digits).format(numeric);
+};
+
+export const formatPln = (value, digits = 2) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return getCurrencyFormatter('PLN', 'pl-PL', digits).format(0);
+  }
+  return getCurrencyFormatter('PLN', 'pl-PL', digits).format(numeric);
 };
 
 export const formatPercent = (value, digits = 2) => {
@@ -37,8 +45,10 @@ export const formatPriceSource = (source, connected = false) => {
   const normalized = String(source || '').trim().toUpperCase();
 
   switch (normalized) {
-    case 'TWELVE_DATA':
-      return 'Twelve Data';
+    case 'BINANCE_REST':
+      return 'Binance (delayed)';
+    case 'BINANCE':
+      return 'Binance';
     case 'SIMULATOR':
       return 'Simulator';
     case 'DB':

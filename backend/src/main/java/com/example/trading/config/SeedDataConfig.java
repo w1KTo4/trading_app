@@ -21,9 +21,9 @@ public class SeedDataConfig {
                                 PasswordEncoder passwordEncoder) {
         return args -> {
             upsertUserWithAccount(userRepository, accountRepository, passwordEncoder,
-                    "test@test.com", UserRole.USER, new BigDecimal("100000.0000"));
+                    "test@test.com", UserRole.USER, new BigDecimal("0.0000"));
             upsertUserWithAccount(userRepository, accountRepository, passwordEncoder,
-                    "admin@test.com", UserRole.ADMIN, new BigDecimal("100000.0000"));
+                    "admin@test.com", UserRole.ADMIN, new BigDecimal("0.0000"));
         };
     }
 

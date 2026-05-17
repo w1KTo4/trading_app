@@ -13,6 +13,22 @@ const appendOrderEvent = (previousEvents, nextEvent) => {
   return [nextEvent, ...deduped].slice(0, 50);
 };
 
+const buildPaymentEventKey = (event = {}) =>
+  [
+    event.type ?? '',
+    event.correlationId ?? '',
+    event.status ?? '',
+    event.amount ?? '',
+    event.balanceAfter ?? '',
+    event.createdAt ?? '',
+  ].join('|');
+
+const appendPaymentEvent = (previousEvents, nextEvent) => {
+  const nextKey = buildPaymentEventKey(nextEvent);
+  const deduped = previousEvents.filter((event) => buildPaymentEventKey(event) !== nextKey);
+  return [nextEvent, ...deduped].slice(0, 80);
+};
+
 const resolveWsUrl = () => {
   const normalizeForSockJs = (url = '') => {
     const trimmed = String(url).trim().replace(/\/+$/, '');
@@ -57,6 +73,7 @@ export function WebSocketProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [latestPrices, setLatestPrices] = useState({});
   const [orderEvents, setOrderEvents] = useState([]);
+  const [paymentEvents, setPaymentEvents] = useState([]);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -79,10 +96,20 @@ export function WebSocketProvider({ children }) {
           setOrderEvents((prev) => appendOrderEvent(prev, event));
         });
 
+        client.subscribe('/user/queue/payments', (message) => {
+          const event = JSON.parse(message.body);
+          setPaymentEvents((prev) => appendPaymentEvent(prev, event));
+        });
+
         if (email) {
           client.subscribe(`/topic/orders/${email}`, (message) => {
             const event = JSON.parse(message.body);
             setOrderEvents((prev) => appendOrderEvent(prev, event));
+          });
+
+          client.subscribe(`/topic/payments/${email}`, (message) => {
+            const event = JSON.parse(message.body);
+            setPaymentEvents((prev) => appendPaymentEvent(prev, event));
           });
         }
       },
@@ -100,8 +127,8 @@ export function WebSocketProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ connected, latestPrices, orderEvents }),
-    [connected, latestPrices, orderEvents],
+    () => ({ connected, latestPrices, orderEvents, paymentEvents }),
+    [connected, latestPrices, orderEvents, paymentEvents],
   );
 
   return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>;

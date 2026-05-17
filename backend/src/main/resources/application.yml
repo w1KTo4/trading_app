@@ -31,9 +31,27 @@ logging:
     org.springframework.security: INFO
 
 market-data:
-  api-key: ${TWELVE_DATA_API_KEY:}
-  base-url: ${TWELVE_DATA_BASE_URL:https://api.twelvedata.com}
+  enabled: ${MARKET_DATA_ENABLED:true}
+  provider: ${MARKET_DATA_PROVIDER:binance}
+  base-url: ${MARKET_DATA_BASE_URL:https://api.binance.com}
   focus-poll-delay-ms: ${MARKET_DATA_FOCUS_POLL_DELAY_MS:5000}
   universe-poll-delay-ms: ${MARKET_DATA_UNIVERSE_POLL_DELAY_MS:60000}
   focus-ttl-seconds: ${MARKET_DATA_FOCUS_TTL_SECONDS:120}
   max-focus-symbols: ${MARKET_DATA_MAX_FOCUS_SYMBOLS:8}
+  bootstrap-timeframe: ${MARKET_DATA_BOOTSTRAP_TIMEFRAME:15m}
+  bootstrap-candles: ${MARKET_DATA_BOOTSTRAP_CANDLES:400}
+  external-stale-after-seconds: ${MARKET_DATA_EXTERNAL_STALE_AFTER_SECONDS:90}
+
+trustpay:
+  enabled: ${TRUSTPAY_ENABLED:true}
+  submit-url: ${TRUSTPAY_SUBMIT_URL:https://trustpay-backend-1orv.onrender.com/api/v1/payments/submit-code}
+  store-name: ${TRUSTPAY_STORE_NAME:TradingStation}
+  webhook-secret: ${WEBHOOK_SECRET_TRUSTPAY:}
+  dev-webhook-secret: ${TRUSTPAY_DEV_WEBHOOK_SECRET:trustpay-local-dev-secret}
+  public-base-url: ${TRUSTPAY_PUBLIC_BASE_URL:}
+  require-webhook-signature: ${TRUSTPAY_REQUIRE_WEBHOOK_SIGNATURE:false}
+  webhook-signature-header: ${TRUSTPAY_WEBHOOK_SIGNATURE_HEADER:x-webhook-signature}
+
+app:
+  cors:
+    allowed-origin-patterns: ${APP_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*,https://trustpay-iota.vercel.app}

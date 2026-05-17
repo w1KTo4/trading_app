@@ -6,6 +6,7 @@ com\example\trading\config\SeedDataConfig.class
 com\example\trading\entity\Trade.class
 com\example\trading\config\JwtAuthenticationFilter.class
 com\example\trading\config\SecurityConfig.class
+com\example\trading\service\ExternalMarketDataService.class
 com\example\trading\entity\MarketPrice.class
 com\example\trading\entity\InstrumentType.class
 com\example\trading\controller\OrderController.class
@@ -15,13 +16,14 @@ com\example\trading\service\MatchingEngineService.class
 com\example\trading\config\WebSocketConfig.class
 com\example\trading\dto\OrderResponseDto.class
 com\example\trading\repository\PositionRepository.class
-com\example\trading\service\TwelveDataMarketDataService$1.class
 com\example\trading\dto\UserProfileDto.class
 com\example\trading\entity\Position.class
+com\example\trading\service\ExternalMarketDataService$ExternalQuote.class
 com\example\trading\dto\TradeResponseDto.class
 com\example\trading\repository\OrderRepository.class
 com\example\trading\controller\AdminController.class
 com\example\trading\service\AuthService.class
+com\example\trading\service\BinanceMarketDataService.class
 com\example\trading\entity\OrderStatus.class
 com\example\trading\dto\AuthResponse.class
 com\example\trading\dto\RegisterRequest.class

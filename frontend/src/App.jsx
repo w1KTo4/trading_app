@@ -40,7 +40,8 @@ function Layout({ email, accountId, onLogout, children }) {
     };
   }, []);
 
-  const feedLabel = marketDataStatus?.externalEnabled ? 'Feed: Twelve Data' : 'Feed: Simulator';
+  const providerName = marketDataStatus?.provider ? String(marketDataStatus.provider).toUpperCase() : 'SIMULATOR';
+  const feedLabel = marketDataStatus?.externalEnabled ? `Feed: ${providerName}` : 'Feed: Simulator';
   const modeLabel = marketDataStatus?.externalEnabled ? 'Realtime focus + market snapshots' : 'Symulacja lokalna';
 
   return (

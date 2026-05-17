@@ -11,4 +11,6 @@ public interface MarketPriceRepository extends JpaRepository<MarketPrice, Long> 
     Optional<MarketPrice> findTopBySymbolOrderByTsDesc(String symbol);
 
     List<MarketPrice> findBySymbolOrderByTsDesc(String symbol, Pageable pageable);
+
+    void deleteBySymbol(String symbol);
 }

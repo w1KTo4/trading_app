@@ -29,6 +29,14 @@ services:
       SPRING_DATASOURCE_USERNAME: trading
       SPRING_DATASOURCE_PASSWORD: trading
       JWT_SECRET: super-secret-jwt-key-change-in-production-123456
+      TRUSTPAY_ENABLED: "true"
+      TRUSTPAY_SUBMIT_URL: https://trustpay-backend-1orv.onrender.com/api/v1/payments/submit-code
+      TRUSTPAY_STORE_NAME: TradingStation
+      WEBHOOK_SECRET_TRUSTPAY: trustpay-local-dev-secret
+      TRUSTPAY_DEV_WEBHOOK_SECRET: trustpay-local-dev-secret
+      TRUSTPAY_PUBLIC_BASE_URL: ${TRUSTPAY_PUBLIC_BASE_URL:-}
+      TRUSTPAY_REQUIRE_WEBHOOK_SIGNATURE: "false"
+      APP_CORS_ALLOWED_ORIGIN_PATTERNS: http://localhost:*,http://127.0.0.1:*,https://trustpay-iota.vercel.app
     ports:
       - "8080:8080"
 

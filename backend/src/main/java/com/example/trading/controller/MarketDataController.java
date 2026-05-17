@@ -3,8 +3,8 @@ package com.example.trading.controller;
 import com.example.trading.dto.MarketDataFocusRequest;
 import com.example.trading.dto.MarketDataStatusDto;
 import com.example.trading.repository.InstrumentRepository;
+import com.example.trading.service.ExternalMarketDataService;
 import com.example.trading.service.MarketFocusRegistryService;
-import com.example.trading.service.TwelveDataMarketDataService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -16,14 +16,14 @@ import java.util.List;
 public class MarketDataController {
 
     private final MarketFocusRegistryService marketFocusRegistryService;
-    private final TwelveDataMarketDataService twelveDataMarketDataService;
+    private final ExternalMarketDataService externalMarketDataService;
     private final InstrumentRepository instrumentRepository;
 
     public MarketDataController(MarketFocusRegistryService marketFocusRegistryService,
-                                TwelveDataMarketDataService twelveDataMarketDataService,
+                                ExternalMarketDataService externalMarketDataService,
                                 InstrumentRepository instrumentRepository) {
         this.marketFocusRegistryService = marketFocusRegistryService;
-        this.twelveDataMarketDataService = twelveDataMarketDataService;
+        this.externalMarketDataService = externalMarketDataService;
         this.instrumentRepository = instrumentRepository;
     }
 
@@ -37,15 +37,15 @@ public class MarketDataController {
     @GetMapping("/status")
     public ResponseEntity<MarketDataStatusDto> getStatus() {
         List<String> focusPreview = marketFocusRegistryService.getFocusedSymbols().stream().limit(6).toList();
-        boolean externalEnabled = twelveDataMarketDataService.isEnabled();
+        boolean externalEnabled = externalMarketDataService.isEnabled();
 
         return ResponseEntity.ok(new MarketDataStatusDto(
                 externalEnabled ? "hybrid-live" : "simulator",
-                "TWELVE_DATA",
+                externalMarketDataService.providerName(),
                 externalEnabled,
                 externalEnabled,
                 focusPreview.size(),
-                twelveDataMarketDataService.countSupported(instrumentRepository.findByActiveTrue()),
+                externalMarketDataService.countSupported(instrumentRepository.findByActiveTrue()),
                 focusPreview
         ));
     }

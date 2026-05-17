@@ -1,4 +1,4 @@
-import { formatUsd } from '../utils/formatters';
+import { formatPln, formatUsd } from '../utils/formatters';
 
 function PositionList({ positions = [], showExposure = false, showRealized = true, title = 'Pozycje' }) {
   const sortedPositions = [...positions].sort((left, right) => {
@@ -34,16 +34,16 @@ function PositionList({ positions = [], showExposure = false, showRealized = tru
         </div>
         <div className="mini-stat">
           <p className="muted">Gross exposure</p>
-          <strong>{formatUsd(grossExposure, 2)}</strong>
+          <strong>{formatPln(grossExposure, 2)}</strong>
         </div>
         <div className="mini-stat">
           <p className="muted">Open P&L</p>
-          <strong className={totalUnrealized >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatUsd(totalUnrealized, 2)}</strong>
+          <strong className={totalUnrealized >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPln(totalUnrealized, 2)}</strong>
         </div>
         {showRealized && (
           <div className="mini-stat">
             <p className="muted">Realized P&L</p>
-            <strong className={totalRealized >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatUsd(totalRealized, 2)}</strong>
+            <strong className={totalRealized >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPln(totalRealized, 2)}</strong>
           </div>
         )}
       </div>
@@ -57,9 +57,9 @@ function PositionList({ positions = [], showExposure = false, showRealized = tru
               <th>Ilosc</th>
               <th>Srednia (USD)</th>
               <th>Aktualna (USD)</th>
-              {showExposure && <th>Ekspozycja (USD)</th>}
-              <th>Unrealized P&L (USD)</th>
-              {showRealized && <th>Realized P&L (USD)</th>}
+              {showExposure && <th>Ekspozycja (PLN)</th>}
+              <th>Unrealized P&L (PLN)</th>
+              {showRealized && <th>Realized P&L (PLN)</th>}
             </tr>
           </thead>
           <tbody>
@@ -82,14 +82,14 @@ function PositionList({ positions = [], showExposure = false, showRealized = tru
                 <td>{formatUsd(position.averagePrice, 4)}</td>
                 <td>{formatUsd(position.currentPrice, 4)}</td>
                 {showExposure && (
-                  <td>{formatUsd(Math.abs(Number(position.quantity) * Number(position.currentPrice)), 2)}</td>
+                  <td>{formatPln(Math.abs(Number(position.quantity) * Number(position.currentPrice)), 2)}</td>
                 )}
                 <td className={Number(position.unrealizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                  {formatUsd(position.unrealizedPnl, 2)}
+                  {formatPln(position.unrealizedPnl, 2)}
                 </td>
                 {showRealized && (
                   <td className={Number(position.realizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                    {formatUsd(position.realizedPnl, 2)}
+                    {formatPln(position.realizedPnl, 2)}
                   </td>
                 )}
               </tr>
@@ -102,3 +102,4 @@ function PositionList({ positions = [], showExposure = false, showRealized = tru
 }
 
 export default PositionList;
+

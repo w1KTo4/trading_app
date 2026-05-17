@@ -5,19 +5,31 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "market-data")
 public class MarketDataProperties {
 
-    private String apiKey = "";
-    private String baseUrl = "https://api.twelvedata.com";
+    private boolean enabled = true;
+    private String provider = "binance";
+    private String baseUrl = "https://api.binance.com";
     private long focusPollDelayMs = 5000L;
     private long universePollDelayMs = 60000L;
     private long focusTtlSeconds = 120L;
     private int maxFocusSymbols = 8;
+    private String bootstrapTimeframe = "15m";
+    private int bootstrapCandles = 400;
+    private long externalStaleAfterSeconds = 90L;
 
-    public String getApiKey() {
-        return apiKey;
+    public boolean isEnabled() {
+        return enabled;
     }
 
-    public void setApiKey(String apiKey) {
-        this.apiKey = apiKey;
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public String getProvider() {
+        return provider;
+    }
+
+    public void setProvider(String provider) {
+        this.provider = provider;
     }
 
     public String getBaseUrl() {
@@ -58,5 +70,29 @@ public class MarketDataProperties {
 
     public void setMaxFocusSymbols(int maxFocusSymbols) {
         this.maxFocusSymbols = maxFocusSymbols;
+    }
+
+    public String getBootstrapTimeframe() {
+        return bootstrapTimeframe;
+    }
+
+    public void setBootstrapTimeframe(String bootstrapTimeframe) {
+        this.bootstrapTimeframe = bootstrapTimeframe;
+    }
+
+    public int getBootstrapCandles() {
+        return bootstrapCandles;
+    }
+
+    public void setBootstrapCandles(int bootstrapCandles) {
+        this.bootstrapCandles = bootstrapCandles;
+    }
+
+    public long getExternalStaleAfterSeconds() {
+        return externalStaleAfterSeconds;
+    }
+
+    public void setExternalStaleAfterSeconds(long externalStaleAfterSeconds) {
+        this.externalStaleAfterSeconds = externalStaleAfterSeconds;
     }
 }

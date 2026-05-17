@@ -3,6 +3,7 @@ package com.example.trading.service;
 import com.example.trading.entity.Instrument;
 import com.example.trading.entity.InstrumentType;
 import com.example.trading.entity.MarketPrice;
+import com.example.trading.config.MarketDataProperties;
 import com.example.trading.repository.InstrumentRepository;
 import com.example.trading.repository.MarketPriceRepository;
 import org.junit.jupiter.api.Test;
@@ -31,9 +32,11 @@ class MarketSimulatorTest {
     @Mock
     private SimpMessagingTemplate messagingTemplate;
     @Mock
-    private TwelveDataMarketDataService twelveDataMarketDataService;
+    private ExternalMarketDataService externalMarketDataService;
     @Mock
     private MarketFocusRegistryService marketFocusRegistryService;
+    @Mock
+    private MarketDataProperties marketDataProperties;
 
     @Test
     void shouldGenerateTicksAndPublish() {
@@ -49,14 +52,16 @@ class MarketSimulatorTest {
         when(instrumentRepository.findByActiveTrue()).thenReturn(List.of(instrument));
         when(instrumentRepository.save(any(Instrument.class))).thenAnswer(i -> i.getArgument(0));
         when(marketPriceRepository.save(any(MarketPrice.class))).thenAnswer(i -> i.getArgument(0));
+        when(externalMarketDataService.isEnabled()).thenReturn(false);
 
         MarketSimulatorService service = new MarketSimulatorService(
                 instrumentRepository,
                 marketPriceRepository,
                 matchingEngineService,
                 messagingTemplate,
-                twelveDataMarketDataService,
-                marketFocusRegistryService
+                externalMarketDataService,
+                marketFocusRegistryService,
+                marketDataProperties
         );
 
         service.generateTickCycle();
