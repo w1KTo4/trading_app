@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../services/api';
 import Chart from '../components/Chart';
@@ -15,45 +15,60 @@ function Instrument({ accountId }) {
   const { symbol } = useParams();
   const { latestPrices, orderEvents, connected } = useWebSocketData();
   const [instrument, setInstrument] = useState(null);
+  const [position, setPosition] = useState(null);
   const [message, setMessage] = useState('');
 
   const currentTick = latestPrices[symbol];
   const currentLivePrice = currentTick?.price;
+  const instrumentTradable = instrument?.type === 'CRYPTO';
   const currentSource = formatPriceSource(currentTick?.source || 'SNAPSHOT', connected);
+  const positionMatchesSymbol = String(position?.symbol || '').toUpperCase() === String(symbol || '').toUpperCase();
   const { candles } = useInstrumentCandles({
-    symbol,
+    symbol: instrumentTradable ? symbol : null,
     timeframe: INSTRUMENT_TIMEFRAME,
     limit: INSTRUMENT_CANDLE_LIMIT,
     livePrice: currentLivePrice,
   });
+  const riskLines = useMemo(
+    () =>
+      [
+        { type: 'TP', price: positionMatchesSymbol ? position?.takeProfit : null },
+        { type: 'SL', price: positionMatchesSymbol ? position?.stopLoss : null },
+      ].filter((line) => Number(line.price) > 0),
+    [position, positionMatchesSymbol],
+  );
   useMarketFocus([symbol]);
 
+  const loadInstrumentView = useCallback(async () => {
+    const [instrumentRes, portfolioRes] = await Promise.allSettled([
+      api.get(`/api/instruments/${symbol}`),
+      accountId ? api.get(`/api/accounts/${accountId}/portfolio`) : Promise.resolve({ data: { positions: [] } }),
+    ]);
+
+    if (instrumentRes.status === 'fulfilled') {
+      setInstrument(instrumentRes.value.data);
+    } else {
+      setInstrument(null);
+    }
+
+    if (portfolioRes.status === 'fulfilled') {
+      const positions = portfolioRes.value.data?.positions || [];
+      setPosition(positions.find((entry) => entry.symbol === symbol) || null);
+    } else {
+      setPosition(null);
+    }
+  }, [accountId, symbol]);
+
   useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      const instrumentRes = await api.get(`/api/instruments/${symbol}`);
-      if (active) {
-        setInstrument(instrumentRes.data);
-      }
-    };
-
-    load().catch(() => {
-      if (active) {
-        setInstrument(null);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [symbol]);
+    loadInstrumentView();
+  }, [loadInstrumentView]);
 
   useEffect(() => {
     if (orderEvents[0]) {
       setMessage(`Ostatnie potwierdzenie: ${orderEvents[0].symbol} ${orderEvents[0].status}`);
+      loadInstrumentView();
     }
-  }, [orderEvents]);
+  }, [loadInstrumentView, orderEvents]);
 
   return (
     <div className="stack">
@@ -77,13 +92,24 @@ function Instrument({ accountId }) {
 
       <div className="instrument-layout">
         <div className="instrument-main">
-          <Chart
-            candles={candles}
-            symbol={symbol}
-            timeframe={INSTRUMENT_TIMEFRAME}
-            livePrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
-            priceSource={currentSource}
-          />
+          {instrumentTradable ? (
+            <Chart
+              candles={candles}
+              symbol={symbol}
+              timeframe={INSTRUMENT_TIMEFRAME}
+              livePrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
+              priceSource={currentSource}
+              riskLines={riskLines}
+            />
+          ) : (
+            <div className="card market-unavailable-panel">
+              <span className="status-pill">W trakcie pracy</span>
+              <h3>{symbol}</h3>
+              <p className="muted">
+                Ten rynek nie ma jeszcze podlaczonego zgodnego feedu. Handel i wykresy sa aktywne tylko dla kryptowalut.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="instrument-side">
@@ -91,13 +117,21 @@ function Instrument({ accountId }) {
             symbol={symbol}
             accountId={accountId}
             lastPrice={currentLivePrice ?? instrument?.lastPrice ?? 0}
-            onOrderPlaced={(order) =>
+            position={positionMatchesSymbol ? position : null}
+            disabledReason={instrumentTradable ? '' : 'Handel jest aktualnie wlaczony tylko dla kryptowalut.'}
+            onOrderPlaced={async (order) => {
               setMessage(
                 order.status === 'FILLED'
                   ? `Zlecenie #${order.id} wykonane po ${formatUsd(order.filledPrice ?? currentLivePrice ?? instrument?.lastPrice ?? 0, 4)}.`
                   : `Zlecenie #${order.id} ${order.status}.`,
-              )
-            }
+              );
+              await loadInstrumentView();
+            }}
+            onRiskUpdated={async (updatedPosition) => {
+              setPosition(updatedPosition);
+              setMessage(`SL/TP zaktualizowane dla ${updatedPosition.symbol}.`);
+              await loadInstrumentView();
+            }}
           />
 
           <div className="card order-context-card">

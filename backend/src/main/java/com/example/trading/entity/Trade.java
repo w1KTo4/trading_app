@@ -45,6 +45,9 @@ public class Trade {
     private BigDecimal realizedPnl = BigDecimal.ZERO;
 
     @Column(nullable = false)
+    private boolean closingTrade = false;
+
+    @Column(nullable = false)
     private Instant executedAt;
 
     @PrePersist

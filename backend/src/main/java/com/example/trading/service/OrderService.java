@@ -2,13 +2,16 @@ package com.example.trading.service;
 
 import com.example.trading.dto.OrderRequestDto;
 import com.example.trading.dto.OrderResponseDto;
+import com.example.trading.dto.PositionDto;
+import com.example.trading.dto.PositionRiskUpdateRequest;
 import com.example.trading.dto.TradeResponseDto;
 import com.example.trading.entity.*;
+import com.example.trading.notification.observer.TradingEventPublisher;
 import com.example.trading.repository.AccountRepository;
 import com.example.trading.repository.InstrumentRepository;
 import com.example.trading.repository.OrderRepository;
+import com.example.trading.repository.PositionRepository;
 import com.example.trading.repository.TradeRepository;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,30 +28,33 @@ public class OrderService {
     private final TradeRepository tradeRepository;
     private final AccountRepository accountRepository;
     private final InstrumentRepository instrumentRepository;
-    private final MarketSimulatorService marketSimulatorService;
+    private final PositionRepository positionRepository;
+    private final MarketDataService marketDataService;
     private final MatchingEngineService matchingEngineService;
     private final MarginService marginService;
     private final PortfolioService portfolioService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final TradingEventPublisher eventPublisher;
 
     public OrderService(OrderRepository orderRepository,
                         TradeRepository tradeRepository,
                         AccountRepository accountRepository,
                         InstrumentRepository instrumentRepository,
-                        MarketSimulatorService marketSimulatorService,
+                        PositionRepository positionRepository,
+                        MarketDataService marketDataService,
                         MatchingEngineService matchingEngineService,
                         MarginService marginService,
                         PortfolioService portfolioService,
-                        SimpMessagingTemplate messagingTemplate) {
+                        TradingEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.tradeRepository = tradeRepository;
         this.accountRepository = accountRepository;
         this.instrumentRepository = instrumentRepository;
-        this.marketSimulatorService = marketSimulatorService;
+        this.positionRepository = positionRepository;
+        this.marketDataService = marketDataService;
         this.matchingEngineService = matchingEngineService;
         this.marginService = marginService;
         this.portfolioService = portfolioService;
-        this.messagingTemplate = messagingTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -65,8 +71,11 @@ public class OrderService {
         if (!Boolean.TRUE.equals(instrument.getActive())) {
             throw new IllegalStateException("Instrument is not active");
         }
+        if (instrument.getType() != InstrumentType.CRYPTO) {
+            throw new IllegalStateException("Trading is available only for crypto instruments");
+        }
 
-        BigDecimal currentPrice = marketSimulatorService.getCurrentPrice(instrument.getSymbol())
+        BigDecimal currentPrice = marketDataService.getCurrentPrice(instrument.getSymbol())
                 .orElse(instrument.getLastPrice());
 
         validateOrderInput(dto, currentPrice);
@@ -128,6 +137,60 @@ public class OrderService {
         }
 
         return portfolioService.getPortfolioSummary(accountId);
+    }
+
+    @Transactional
+    public PositionDto updatePositionRisk(Long accountId,
+                                          String symbol,
+                                          PositionRiskUpdateRequest request,
+                                          String requesterEmail) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NoSuchElementException("Account not found"));
+
+        if (!account.getUser().getEmail().equalsIgnoreCase(requesterEmail)) {
+            throw new IllegalStateException("Access denied for account");
+        }
+
+        PositionRiskUpdateRequest safeRequest = request == null ? new PositionRiskUpdateRequest() : request;
+        return portfolioService.updatePositionRisk(accountId, symbol, safeRequest.getTakeProfit(), safeRequest.getStopLoss());
+    }
+
+    @Transactional
+    public OrderResponseDto closePosition(Long accountId, String symbol, String requesterEmail) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NoSuchElementException("Account not found"));
+
+        if (!account.getUser().getEmail().equalsIgnoreCase(requesterEmail)) {
+            throw new IllegalStateException("Access denied for account");
+        }
+
+        Position position = positionRepository.findByAccountIdAndInstrumentSymbolIgnoreCase(accountId, symbol)
+                .orElseThrow(() -> new NoSuchElementException("Open position not found: " + symbol));
+
+        BigDecimal quantity = position.getQuantity();
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) == 0) {
+            throw new NoSuchElementException("Open position not found: " + symbol);
+        }
+
+        Instrument instrument = position.getInstrument();
+        BigDecimal currentPrice = marketDataService.getCurrentPrice(instrument.getSymbol())
+                .orElse(instrument.getLastPrice());
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Current price is not available for closing position");
+        }
+
+        OrderEntity closeOrder = new OrderEntity();
+        closeOrder.setAccount(account);
+        closeOrder.setInstrument(instrument);
+        closeOrder.setSide(quantity.compareTo(BigDecimal.ZERO) > 0 ? OrderSide.SELL : OrderSide.BUY);
+        closeOrder.setType(OrderType.MARKET);
+        closeOrder.setStatus(OrderStatus.NEW);
+        closeOrder.setQuantity(quantity.abs());
+        closeOrder.setMarginRequired(BigDecimal.ZERO);
+
+        OrderEntity result = matchingEngineService.executeMarketOrder(closeOrder, currentPrice);
+        sendOrderUpdate(account.getUser().getEmail(), result);
+        return toDto(result);
     }
 
     @Transactional(readOnly = true)
@@ -211,8 +274,7 @@ public class OrderService {
         payload.put("symbol", order.getInstrument().getSymbol());
         payload.put("status", order.getStatus().name());
         payload.put("filledPrice", order.getFilledPrice());
-        messagingTemplate.convertAndSendToUser(email, "/queue/orders", payload);
-        messagingTemplate.convertAndSend("/topic/orders/" + email, payload);
+        eventPublisher.publishOrderEvent(email, payload);
     }
 
     private TradeResponseDto toTradeDto(Trade trade) {
@@ -224,6 +286,7 @@ public class OrderService {
                 trade.getQuantity(),
                 trade.getPrice(),
                 trade.getRealizedPnl(),
+                trade.isClosingTrade(),
                 trade.getExecutedAt()
         );
     }

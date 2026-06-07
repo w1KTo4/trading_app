@@ -3,6 +3,7 @@ package com.example.trading.service;
 import com.example.trading.config.TrustPayProperties;
 import com.example.trading.dto.*;
 import com.example.trading.entity.*;
+import com.example.trading.notification.observer.TradingEventPublisher;
 import com.example.trading.repository.AccountRepository;
 import com.example.trading.repository.PaymentRequestRepository;
 import com.example.trading.repository.WalletTransactionRepository;
@@ -10,7 +11,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,7 +35,7 @@ public class FundingService {
     private final PaymentRequestRepository paymentRequestRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final TrustPayProperties trustPayProperties;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final TradingEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final RestClient restClient = RestClient.builder().build();
 
@@ -43,13 +43,13 @@ public class FundingService {
                           PaymentRequestRepository paymentRequestRepository,
                           WalletTransactionRepository walletTransactionRepository,
                           TrustPayProperties trustPayProperties,
-                          SimpMessagingTemplate messagingTemplate,
+                          TradingEventPublisher eventPublisher,
                           ObjectMapper objectMapper) {
         this.accountRepository = accountRepository;
         this.paymentRequestRepository = paymentRequestRepository;
         this.walletTransactionRepository = walletTransactionRepository;
         this.trustPayProperties = trustPayProperties;
-        this.messagingTemplate = messagingTemplate;
+        this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
     }
 
@@ -312,8 +312,7 @@ public class FundingService {
         event.put("receivedAt", Instant.now());
         event.put("accountId", paymentRequest.getAccount().getId());
         String email = paymentRequest.getAccount().getUser().getEmail();
-        messagingTemplate.convertAndSendToUser(email, "/queue/payments", event);
-        messagingTemplate.convertAndSend("/topic/payments/" + email, event);
+        eventPublisher.publishPaymentEvent(email, event);
     }
 
     private void sendWalletEvent(String email, String type, WalletTransaction tx) {
@@ -325,8 +324,7 @@ public class FundingService {
         event.put("accountId", tx.getAccount().getId());
         event.put("correlationId", tx.getCorrelationId());
         event.put("createdAt", tx.getCreatedAt());
-        messagingTemplate.convertAndSendToUser(email, "/queue/payments", event);
-        messagingTemplate.convertAndSend("/topic/payments/" + email, event);
+        eventPublisher.publishPaymentEvent(email, event);
     }
 
     private Account requireOwnedAccount(Long accountId, String requesterEmail) {

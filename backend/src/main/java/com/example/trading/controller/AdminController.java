@@ -1,7 +1,6 @@
 package com.example.trading.controller;
 
 import com.example.trading.repository.AccountRepository;
-import com.example.trading.service.MarketSimulatorService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -16,12 +15,9 @@ import java.util.Map;
 public class AdminController {
 
     private final AccountRepository accountRepository;
-    private final MarketSimulatorService marketSimulatorService;
 
-    public AdminController(AccountRepository accountRepository,
-                           MarketSimulatorService marketSimulatorService) {
+    public AdminController(AccountRepository accountRepository) {
         this.accountRepository = accountRepository;
-        this.marketSimulatorService = marketSimulatorService;
     }
 
     @GetMapping("/accounts")
@@ -34,14 +30,5 @@ public class AdminController {
             return row;
         }).toList();
         return ResponseEntity.ok(payload);
-    }
-
-    @PostMapping("/simulate-tick")
-    public ResponseEntity<Map<String, Object>> simulateTick() {
-        marketSimulatorService.generateTickCycle();
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "ok");
-        response.put("message", "Tick cycle executed manually");
-        return ResponseEntity.ok(response);
     }
 }

@@ -17,5 +17,6 @@ public class TradeResponseDto {
     private BigDecimal quantity;
     private BigDecimal price;
     private BigDecimal realizedPnl;
+    private boolean closingTrade;
     private Instant executedAt;
 }

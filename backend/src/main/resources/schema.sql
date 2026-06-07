@@ -83,6 +83,7 @@ CREATE TABLE trades (
     quantity NUMERIC(19,6) NOT NULL,
     price NUMERIC(19,6) NOT NULL,
     realized_pnl NUMERIC(19,6) NOT NULL,
+    closing_trade BOOLEAN NOT NULL,
     executed_at DATETIME(6) NOT NULL,
     CONSTRAINT fk_trades_order FOREIGN KEY (order_id) REFERENCES orders(id),
     CONSTRAINT fk_trades_account FOREIGN KEY (account_id) REFERENCES accounts(id),

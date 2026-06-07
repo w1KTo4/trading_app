@@ -17,6 +17,6 @@ public class PriceTickDto {
     private String source;
 
     public PriceTickDto(String symbol, BigDecimal price, Instant ts) {
-        this(symbol, price, ts, "SIMULATOR");
+        this(symbol, price, ts, "SNAPSHOT");
     }
 }

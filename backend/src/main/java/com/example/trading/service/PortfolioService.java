@@ -69,10 +69,25 @@ public class PortfolioService {
         return summary;
     }
 
+    @Transactional
+    public PositionDto updatePositionRisk(Long accountId, String symbol, BigDecimal takeProfit, BigDecimal stopLoss) {
+        Position position = positionRepository.findByAccountIdAndInstrumentSymbolIgnoreCase(accountId, symbol)
+                .orElseThrow(() -> new NoSuchElementException("Open position not found: " + symbol));
+
+        if (position.getQuantity().compareTo(BigDecimal.ZERO) == 0) {
+            throw new NoSuchElementException("Open position not found: " + symbol);
+        }
+
+        BigDecimal current = resolveCurrentPrice(position);
+        validateRiskLevels(position, current, takeProfit, stopLoss);
+
+        position.setTakeProfit(takeProfit);
+        position.setStopLoss(stopLoss);
+        return toPositionDto(positionRepository.save(position));
+    }
+
     private PositionDto toPositionDto(Position position) {
-        BigDecimal current = marketPriceRepository.findTopBySymbolOrderByTsDesc(position.getInstrument().getSymbol())
-                .map(MarketPrice::getPrice)
-                .orElse(position.getInstrument().getLastPrice());
+        BigDecimal current = resolveCurrentPrice(position);
 
         BigDecimal qty = position.getQuantity();
         BigDecimal pnl;
@@ -88,7 +103,46 @@ public class PortfolioService {
                 position.getAveragePrice(),
                 current,
                 pnl,
-                position.getRealizedPnl()
+                position.getRealizedPnl(),
+                position.getTakeProfit(),
+                position.getStopLoss()
         );
+    }
+
+    private BigDecimal resolveCurrentPrice(Position position) {
+        return marketPriceRepository.findTopBySymbolOrderByTsDesc(position.getInstrument().getSymbol())
+                .map(MarketPrice::getPrice)
+                .orElse(position.getInstrument().getLastPrice());
+    }
+
+    private void validateRiskLevels(Position position, BigDecimal current, BigDecimal takeProfit, BigDecimal stopLoss) {
+        if (current == null || current.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Current price is not available for risk validation");
+        }
+        if (takeProfit != null && takeProfit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Take profit must be greater than 0");
+        }
+        if (stopLoss != null && stopLoss.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Stop loss must be greater than 0");
+        }
+
+        boolean isLong = position.getQuantity().compareTo(BigDecimal.ZERO) > 0;
+        if (takeProfit != null) {
+            if (isLong && takeProfit.compareTo(current) <= 0) {
+                throw new IllegalArgumentException("Take profit must be above current price for long positions");
+            }
+            if (!isLong && takeProfit.compareTo(current) >= 0) {
+                throw new IllegalArgumentException("Take profit must be below current price for short positions");
+            }
+        }
+
+        if (stopLoss != null) {
+            if (isLong && stopLoss.compareTo(current) >= 0) {
+                throw new IllegalArgumentException("Stop loss must be below current price for long positions");
+            }
+            if (!isLong && stopLoss.compareTo(current) <= 0) {
+                throw new IllegalArgumentException("Stop loss must be above current price for short positions");
+            }
+        }
     }
 }

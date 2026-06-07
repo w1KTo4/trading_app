@@ -1,4 +1,4 @@
-package com.example.trading.service;
+package com.example.trading.marketdata.strategy;
 
 import com.example.trading.dto.CandleDto;
 import com.example.trading.entity.Instrument;
@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-public interface ExternalMarketDataService {
+public interface MarketDataProvider {
 
     boolean isEnabled();
 

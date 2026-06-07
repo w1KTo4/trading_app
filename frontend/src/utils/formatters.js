@@ -49,8 +49,6 @@ export const formatPriceSource = (source, connected = false) => {
       return 'Binance (delayed)';
     case 'BINANCE':
       return 'Binance';
-    case 'SIMULATOR':
-      return 'Simulator';
     case 'DB':
       return 'Database snapshot';
     case 'MARKET SNAPSHOT':

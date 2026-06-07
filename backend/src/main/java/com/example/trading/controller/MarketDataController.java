@@ -2,8 +2,8 @@ package com.example.trading.controller;
 
 import com.example.trading.dto.MarketDataFocusRequest;
 import com.example.trading.dto.MarketDataStatusDto;
+import com.example.trading.marketdata.strategy.MarketDataProvider;
 import com.example.trading.repository.InstrumentRepository;
-import com.example.trading.service.ExternalMarketDataService;
 import com.example.trading.service.MarketFocusRegistryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -16,14 +16,14 @@ import java.util.List;
 public class MarketDataController {
 
     private final MarketFocusRegistryService marketFocusRegistryService;
-    private final ExternalMarketDataService externalMarketDataService;
+    private final MarketDataProvider marketDataProvider;
     private final InstrumentRepository instrumentRepository;
 
     public MarketDataController(MarketFocusRegistryService marketFocusRegistryService,
-                                ExternalMarketDataService externalMarketDataService,
+                                MarketDataProvider marketDataProvider,
                                 InstrumentRepository instrumentRepository) {
         this.marketFocusRegistryService = marketFocusRegistryService;
-        this.externalMarketDataService = externalMarketDataService;
+        this.marketDataProvider = marketDataProvider;
         this.instrumentRepository = instrumentRepository;
     }
 
@@ -37,15 +37,15 @@ public class MarketDataController {
     @GetMapping("/status")
     public ResponseEntity<MarketDataStatusDto> getStatus() {
         List<String> focusPreview = marketFocusRegistryService.getFocusedSymbols().stream().limit(6).toList();
-        boolean externalEnabled = externalMarketDataService.isEnabled();
+        boolean externalEnabled = marketDataProvider.isEnabled();
 
         return ResponseEntity.ok(new MarketDataStatusDto(
-                externalEnabled ? "hybrid-live" : "simulator",
-                externalMarketDataService.providerName(),
+                externalEnabled ? "crypto-live" : "external-unavailable",
+                marketDataProvider.providerName(),
                 externalEnabled,
                 externalEnabled,
                 focusPreview.size(),
-                externalMarketDataService.countSupported(instrumentRepository.findByActiveTrue()),
+                marketDataProvider.countSupported(instrumentRepository.findByActiveTrue()),
                 focusPreview
         ));
     }

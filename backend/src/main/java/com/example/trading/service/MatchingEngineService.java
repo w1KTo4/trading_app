@@ -1,11 +1,11 @@
 package com.example.trading.service;
 
 import com.example.trading.entity.*;
+import com.example.trading.notification.observer.TradingEventPublisher;
 import com.example.trading.repository.AccountRepository;
 import com.example.trading.repository.OrderRepository;
 import com.example.trading.repository.PositionRepository;
 import com.example.trading.repository.TradeRepository;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,18 +23,18 @@ public class MatchingEngineService {
     private final PositionRepository positionRepository;
     private final TradeRepository tradeRepository;
     private final AccountRepository accountRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final TradingEventPublisher eventPublisher;
 
     public MatchingEngineService(OrderRepository orderRepository,
                                  PositionRepository positionRepository,
                                  TradeRepository tradeRepository,
                                  AccountRepository accountRepository,
-                                 SimpMessagingTemplate messagingTemplate) {
+                                 TradingEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.positionRepository = positionRepository;
         this.tradeRepository = tradeRepository;
         this.accountRepository = accountRepository;
-        this.messagingTemplate = messagingTemplate;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -43,7 +43,7 @@ public class MatchingEngineService {
         order.setStatus(OrderStatus.FILLED);
         OrderEntity savedOrder = orderRepository.save(order);
 
-        BigDecimal realizedPnl = updatePositionAndAccount(savedOrder, executionPrice);
+        ExecutionImpact impact = updatePositionAndAccount(savedOrder, executionPrice);
 
         Trade trade = new Trade();
         trade.setOrder(savedOrder);
@@ -52,7 +52,8 @@ public class MatchingEngineService {
         trade.setSide(savedOrder.getSide());
         trade.setQuantity(savedOrder.getQuantity());
         trade.setPrice(executionPrice);
-        trade.setRealizedPnl(realizedPnl.setScale(6, RoundingMode.HALF_UP));
+        trade.setRealizedPnl(impact.realizedPnl().setScale(6, RoundingMode.HALF_UP));
+        trade.setClosingTrade(impact.closingTrade());
         trade.setExecutedAt(Instant.now());
         tradeRepository.save(trade);
 
@@ -118,7 +119,7 @@ public class MatchingEngineService {
         }
     }
 
-    private BigDecimal updatePositionAndAccount(OrderEntity order, BigDecimal executionPrice) {
+    private ExecutionImpact updatePositionAndAccount(OrderEntity order, BigDecimal executionPrice) {
         Account account = order.getAccount();
         Instrument instrument = order.getInstrument();
         BigDecimal signedQty = order.getSide() == OrderSide.BUY ? order.getQuantity() : order.getQuantity().negate();
@@ -136,6 +137,7 @@ public class MatchingEngineService {
 
         BigDecimal currentQty = position.getQuantity();
         BigDecimal realized = BigDecimal.ZERO;
+        boolean closingTrade = false;
 
         if (currentQty.compareTo(BigDecimal.ZERO) == 0 || sameDirection(currentQty, signedQty)) {
             BigDecimal newQty = currentQty.add(signedQty);
@@ -151,6 +153,7 @@ public class MatchingEngineService {
         } else {
             BigDecimal closingQty = currentQty.abs().min(signedQty.abs());
             realized = calculateRealizedPnl(currentQty, position.getAveragePrice(), executionPrice, closingQty);
+            closingTrade = closingQty.compareTo(BigDecimal.ZERO) > 0;
 
             BigDecimal remaining = currentQty.add(signedQty);
             position.setRealizedPnl(position.getRealizedPnl().add(realized));
@@ -159,17 +162,23 @@ public class MatchingEngineService {
             if (remaining.compareTo(BigDecimal.ZERO) == 0) {
                 positionRepository.delete(position);
             } else {
+                boolean reversedDirection = signedQty.abs().compareTo(currentQty.abs()) > 0;
                 position.setQuantity(remaining);
-                position.setAveragePrice(signedQty.abs().compareTo(currentQty.abs()) > 0
-                        ? executionPrice
-                        : position.getAveragePrice());
-                applyTpSlFromOrder(position, order);
+                position.setAveragePrice(reversedDirection ? executionPrice : position.getAveragePrice());
+                if (reversedDirection) {
+                    replaceTpSlFromOrder(position, order);
+                } else {
+                    applyTpSlFromOrder(position, order);
+                }
                 positionRepository.save(position);
             }
         }
 
         accountRepository.save(account);
-        return realized;
+        return new ExecutionImpact(realized, closingTrade);
+    }
+
+    private record ExecutionImpact(BigDecimal realizedPnl, boolean closingTrade) {
     }
 
     private boolean sameDirection(BigDecimal a, BigDecimal b) {
@@ -196,6 +205,11 @@ public class MatchingEngineService {
         }
     }
 
+    private void replaceTpSlFromOrder(Position position, OrderEntity order) {
+        position.setTakeProfit(order.getTakeProfit());
+        position.setStopLoss(order.getStopLoss());
+    }
+
     private void sendOrderConfirmation(OrderEntity order) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("orderId", order.getId());
@@ -204,7 +218,6 @@ public class MatchingEngineService {
         payload.put("filledPrice", order.getFilledPrice());
         payload.put("quantity", order.getQuantity());
 
-        messagingTemplate.convertAndSendToUser(order.getAccount().getUser().getEmail(), "/queue/orders", payload);
-        messagingTemplate.convertAndSend("/topic/orders/" + order.getAccount().getUser().getEmail(), payload);
+        eventPublisher.publishOrderEvent(order.getAccount().getUser().getEmail(), payload);
     }
 }

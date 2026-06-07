@@ -3,9 +3,11 @@ package com.example.trading.service;
 import com.example.trading.dto.OrderRequestDto;
 import com.example.trading.dto.OrderResponseDto;
 import com.example.trading.entity.*;
+import com.example.trading.notification.observer.TradingEventPublisher;
 import com.example.trading.repository.AccountRepository;
 import com.example.trading.repository.InstrumentRepository;
 import com.example.trading.repository.OrderRepository;
+import com.example.trading.repository.PositionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,7 +15,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -33,7 +34,9 @@ class OrderServiceTest {
     @Mock
     private InstrumentRepository instrumentRepository;
     @Mock
-    private MarketSimulatorService marketSimulatorService;
+    private PositionRepository positionRepository;
+    @Mock
+    private MarketDataService marketDataService;
     @Mock
     private MatchingEngineService matchingEngineService;
     @Mock
@@ -41,7 +44,7 @@ class OrderServiceTest {
     @Mock
     private PortfolioService portfolioService;
     @Mock
-    private SimpMessagingTemplate messagingTemplate;
+    private TradingEventPublisher eventPublisher;
 
     @InjectMocks
     private OrderService orderService;
@@ -62,10 +65,10 @@ class OrderServiceTest {
 
         instrument = new Instrument();
         instrument.setId(20L);
-        instrument.setSymbol("AAPL");
-        instrument.setType(InstrumentType.STOCK);
-        instrument.setLeverage(1);
-        instrument.setLastPrice(new BigDecimal("190"));
+        instrument.setSymbol("BTCUSD");
+        instrument.setType(InstrumentType.CRYPTO);
+        instrument.setLeverage(2);
+        instrument.setLastPrice(new BigDecimal("94000"));
         instrument.setActive(true);
     }
 
@@ -73,14 +76,14 @@ class OrderServiceTest {
     void shouldExecuteMarketOrder() {
         OrderRequestDto request = new OrderRequestDto();
         request.setAccountId(10L);
-        request.setSymbol("AAPL");
+        request.setSymbol("BTCUSD");
         request.setType(OrderType.MARKET);
         request.setSide(OrderSide.BUY);
         request.setQuantity(new BigDecimal("2"));
 
         when(accountRepository.findById(10L)).thenReturn(Optional.of(account));
-        when(instrumentRepository.findBySymbolIgnoreCase("AAPL")).thenReturn(Optional.of(instrument));
-        when(marketSimulatorService.getCurrentPrice("AAPL")).thenReturn(Optional.of(new BigDecimal("191.50")));
+        when(instrumentRepository.findBySymbolIgnoreCase("BTCUSD")).thenReturn(Optional.of(instrument));
+        when(marketDataService.getCurrentPrice("BTCUSD")).thenReturn(Optional.of(new BigDecimal("95123.50")));
         when(marginService.calculateRequiredMargin(any(), any(), any())).thenReturn(new BigDecimal("383"));
         when(marginService.hasEnoughMargin(any(), any())).thenReturn(true);
 
@@ -96,15 +99,15 @@ class OrderServiceTest {
 
         assertThat(response.getId()).isEqualTo(99L);
         assertThat(response.getStatus()).isEqualTo(OrderStatus.FILLED);
-        assertThat(response.getFilledPrice()).isEqualByComparingTo("191.50");
+        assertThat(response.getFilledPrice()).isEqualByComparingTo("95123.50");
 
         ArgumentCaptor<OrderEntity> orderCaptor = ArgumentCaptor.forClass(OrderEntity.class);
-        verify(matchingEngineService).executeMarketOrder(orderCaptor.capture(), eq(new BigDecimal("191.50")));
+        verify(matchingEngineService).executeMarketOrder(orderCaptor.capture(), eq(new BigDecimal("95123.50")));
         assertThat(orderCaptor.getValue().getType()).isEqualTo(OrderType.MARKET);
     }
 
     @Test
-    void shouldRejectInactiveInstrument() {
+    void shouldRejectNonCryptoInstrument() {
         OrderRequestDto request = new OrderRequestDto();
         request.setAccountId(10L);
         request.setSymbol("AAPL");
@@ -112,15 +115,74 @@ class OrderServiceTest {
         request.setSide(OrderSide.BUY);
         request.setQuantity(new BigDecimal("1"));
 
+        Instrument stock = new Instrument();
+        stock.setId(21L);
+        stock.setSymbol("AAPL");
+        stock.setType(InstrumentType.STOCK);
+        stock.setLeverage(1);
+        stock.setLastPrice(new BigDecimal("190"));
+        stock.setActive(true);
+
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(account));
+        when(instrumentRepository.findBySymbolIgnoreCase("AAPL")).thenReturn(Optional.of(stock));
+
+        assertThatThrownBy(() -> orderService.placeOrder(request, "test@test.com"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Trading is available only for crypto instruments");
+
+        verifyNoInteractions(matchingEngineService);
+    }
+
+    @Test
+    void shouldRejectInactiveInstrument() {
+        OrderRequestDto request = new OrderRequestDto();
+        request.setAccountId(10L);
+        request.setSymbol("BTCUSD");
+        request.setType(OrderType.MARKET);
+        request.setSide(OrderSide.BUY);
+        request.setQuantity(new BigDecimal("1"));
+
         instrument.setActive(false);
 
         when(accountRepository.findById(10L)).thenReturn(Optional.of(account));
-        when(instrumentRepository.findBySymbolIgnoreCase("AAPL")).thenReturn(Optional.of(instrument));
+        when(instrumentRepository.findBySymbolIgnoreCase("BTCUSD")).thenReturn(Optional.of(instrument));
 
         assertThatThrownBy(() -> orderService.placeOrder(request, "test@test.com"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Instrument is not active");
 
         verifyNoInteractions(matchingEngineService);
+    }
+
+    @Test
+    void shouldCloseLongPositionWithSellMarketOrder() {
+        Position position = new Position();
+        position.setAccount(account);
+        position.setInstrument(instrument);
+        position.setQuantity(new BigDecimal("3"));
+        position.setAveragePrice(new BigDecimal("180"));
+        position.setRealizedPnl(BigDecimal.ZERO);
+
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(account));
+        when(positionRepository.findByAccountIdAndInstrumentSymbolIgnoreCase(10L, "BTCUSD")).thenReturn(Optional.of(position));
+        when(marketDataService.getCurrentPrice("BTCUSD")).thenReturn(Optional.of(new BigDecimal("96100.25")));
+        when(matchingEngineService.executeMarketOrder(any(OrderEntity.class), any(BigDecimal.class))).thenAnswer(invocation -> {
+            OrderEntity order = invocation.getArgument(0);
+            order.setId(100L);
+            order.setStatus(OrderStatus.FILLED);
+            order.setFilledPrice(invocation.getArgument(1));
+            return order;
+        });
+
+        OrderResponseDto response = orderService.closePosition(10L, "BTCUSD", "test@test.com");
+
+        assertThat(response.getId()).isEqualTo(100L);
+        assertThat(response.getSide()).isEqualTo(OrderSide.SELL);
+        assertThat(response.getQuantity()).isEqualByComparingTo("3");
+        assertThat(response.getFilledPrice()).isEqualByComparingTo("96100.25");
+
+        ArgumentCaptor<OrderEntity> orderCaptor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(matchingEngineService).executeMarketOrder(orderCaptor.capture(), eq(new BigDecimal("96100.25")));
+        assertThat(orderCaptor.getValue().getMarginRequired()).isEqualByComparingTo("0");
     }
 }

@@ -1,9 +1,10 @@
-package com.example.trading.service;
+package com.example.trading.marketdata.adapter;
 
 import com.example.trading.config.MarketDataProperties;
 import com.example.trading.dto.CandleDto;
 import com.example.trading.entity.Instrument;
 import com.example.trading.entity.InstrumentType;
+import com.example.trading.marketdata.strategy.MarketDataProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,9 +24,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-public class BinanceMarketDataService implements ExternalMarketDataService {
+public class BinanceMarketDataAdapter implements MarketDataProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(BinanceMarketDataService.class);
+    private static final Logger log = LoggerFactory.getLogger(BinanceMarketDataAdapter.class);
     private static final long EXCHANGE_INFO_REFRESH_SECONDS = 15 * 60;
 
     private final MarketDataProperties marketDataProperties;
@@ -35,7 +36,7 @@ public class BinanceMarketDataService implements ExternalMarketDataService {
     private volatile Instant lastExchangeInfoRefresh = null;
     private volatile boolean exchangeInfoLoaded = false;
 
-    public BinanceMarketDataService(MarketDataProperties marketDataProperties) {
+    public BinanceMarketDataAdapter(MarketDataProperties marketDataProperties) {
         this.marketDataProperties = marketDataProperties;
         this.restClient = RestClient.builder()
                 .baseUrl(marketDataProperties.getBaseUrl())
@@ -270,7 +271,7 @@ public class BinanceMarketDataService implements ExternalMarketDataService {
     private void markInvalidProviderSymbol(String providerSymbol, RestClientResponseException ex) {
         if (ex.getStatusCode().value() == 400) {
             invalidProviderSymbols.add(providerSymbol);
-            log.info("Binance symbol {} marked as invalid (HTTP 400), using simulator fallback", providerSymbol);
+            log.info("Binance symbol {} marked as invalid (HTTP 400), leaving instrument without live external feed", providerSymbol);
             return;
         }
         log.debug("Could not fetch Binance data for symbol {}", providerSymbol, ex);

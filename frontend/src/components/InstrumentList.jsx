@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import { useWebSocketData } from '../ws/useWebSocketData';
 import { formatPriceSource, formatUsd } from '../utils/formatters';
 
+const isTradableInstrument = (instrument) => instrument?.type === 'CRYPTO' && !instrument?.comingSoon;
+
 function InstrumentList({ instruments = [], title = 'Instrumenty', emptyMessage = 'Brak instrumentow.' }) {
   const { latestPrices } = useWebSocketData();
 
@@ -30,22 +32,29 @@ function InstrumentList({ instruments = [], title = 'Instrumenty', emptyMessage 
             {instruments.map((item) => {
               const liveTick = latestPrices[item.symbol];
               const live = liveTick?.price;
+              const tradable = isTradableInstrument(item);
               return (
-                <tr key={item.symbol}>
+                <tr key={item.symbol} className={tradable ? '' : 'market-row-unavailable'}>
                   <td>
                     <strong>{item.symbol}</strong>
                   </td>
                   <td>{item.name}</td>
                   <td>{item.type}</td>
-                  <td>{formatUsd(live ?? item.lastPrice, 4)}</td>
+                  <td>{tradable ? formatUsd(live ?? item.lastPrice, 4) : 'Wkrotce'}</td>
                   <td>
-                    <span className="pill-tag">{formatPriceSource(liveTick?.source || 'DB')}</span>
+                    <span className={`pill-tag ${tradable ? '' : 'pill-muted'}`}>
+                      {tradable ? formatPriceSource(liveTick?.source || 'DB') : 'W trakcie pracy'}
+                    </span>
                   </td>
                   <td>
                     <div className="inline-actions">
-                      <Link className="button ghost" to={`/instrument/${item.symbol}`}>
-                        Handluj
-                      </Link>
+                      {tradable ? (
+                        <Link className="button ghost" to={`/instrument/${item.symbol}`}>
+                          Handluj
+                        </Link>
+                      ) : (
+                        <span className="button ghost disabled-link">Niedostepne</span>
+                      )}
                       <Link className="button ghost" to="/dashboard">
                         Terminal
                       </Link>

@@ -50,6 +50,7 @@ function Portfolio({ accountId, onAccountChange }) {
   const [error, setError] = useState('');
   const [fundingMessage, setFundingMessage] = useState('');
   const [fundingError, setFundingError] = useState('');
+  const [positionMessage, setPositionMessage] = useState('');
   const [depositCode, setDepositCode] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -182,17 +183,40 @@ function Portfolio({ accountId, onAccountChange }) {
     const equity = Number(portfolio?.equity || 0);
     const usedMargin = Number(portfolio?.usedMargin || 0);
     const freeMargin = equity - usedMargin;
+    const positionValue = sumBy(positions, (item) => Math.abs(Number(item.quantity || 0) * Number(item.currentPrice || 0)));
+    const marginLevel = usedMargin > 0 ? (equity / usedMargin) * 100 : null;
 
     return {
       unrealizedPnl,
       freeMargin,
-      positionsCount: positions.length,
-      recentTrades: trades.slice(0, 10),
-      realizedPnl: sumBy(trades.slice(0, 10), (trade) => trade.realizedPnl),
+      positionValue,
+      marginLevel,
+      recentTrades: trades.filter((trade) => trade.closingTrade).slice(0, 10),
       recentFunding: (funding.walletTransactions || []).slice(0, 12),
       pendingPayments: (funding.paymentRequests || []).filter((entry) => entry.status === 'SUBMITTED').slice(0, 8),
     };
   }, [funding.paymentRequests, funding.walletTransactions, portfolio, trades]);
+
+  const recentTradeRows = useMemo(
+    () =>
+      stats.recentTrades.map((trade) => {
+          const quantity = Math.abs(Number(trade.quantity || 0));
+          const signedQuantity = trade.side === 'SELL' ? -quantity : quantity;
+          return {
+            id: trade.id,
+            orderId: trade.orderId,
+            symbol: trade.symbol,
+            quantity: signedQuantity,
+            averagePrice: trade.price,
+            currentPrice: trade.price,
+            unrealizedPnl: trade.realizedPnl,
+            realizedPnl: trade.realizedPnl,
+            takeProfit: null,
+            stopLoss: null,
+          };
+        }),
+    [stats.recentTrades],
+  );
 
   const submitTrustPayDeposit = async (event) => {
     event.preventDefault();
@@ -261,6 +285,35 @@ function Portfolio({ accountId, onAccountChange }) {
     }
   };
 
+  const updatePositionRisk = async (position, risk) => {
+    setError('');
+    setPositionMessage('');
+    try {
+      await api.patch(`/api/accounts/${activeAccountIdRef.current}/positions/${encodeURIComponent(position.symbol)}/risk`, {
+        takeProfit: risk.takeProfit,
+        stopLoss: risk.stopLoss,
+      });
+      setPositionMessage(`SL/TP zaktualizowane dla ${position.symbol}.`);
+      await loadPortfolio(activeAccountIdRef.current);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Nie udalo sie zapisac SL/TP.');
+      throw requestError;
+    }
+  };
+
+  const closePosition = async (position) => {
+    setError('');
+    setPositionMessage('');
+    try {
+      const { data } = await api.post(`/api/accounts/${activeAccountIdRef.current}/positions/${encodeURIComponent(position.symbol)}/close`);
+      setPositionMessage(`Pozycja ${position.symbol} zamknieta po ${formatUsd(data.filledPrice ?? position.currentPrice ?? 0, 4)}.`);
+      await loadPortfolio(activeAccountIdRef.current);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Nie udalo sie zamknac pozycji.');
+      throw requestError;
+    }
+  };
+
   if (!activeAccountId) {
     return <p>Brak accountId. Zaloguj sie ponownie.</p>;
   }
@@ -280,41 +333,6 @@ function Portfolio({ accountId, onAccountChange }) {
           <Link className="button ghost" to="/market">
             Szukaj instrumentow
           </Link>
-        </div>
-      </div>
-
-      <div className="summary-grid summary-grid-rich">
-        <div className="card summary-card">
-          <p className="muted">Balance</p>
-          <h2>{formatPln(portfolio.balance, 2)}</h2>
-          <span className="summary-note">Kapital gotowkowy na rachunku.</span>
-        </div>
-        <div className="card summary-card">
-          <p className="muted">Equity</p>
-          <h2>{formatPln(portfolio.equity, 2)}</h2>
-          <span className={`summary-note ${stats.unrealizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
-            Open P&L {formatPln(stats.unrealizedPnl, 2)}
-          </span>
-        </div>
-        <div className="card summary-card">
-          <p className="muted">Free margin</p>
-          <h2>{formatPln(stats.freeMargin, 2)}</h2>
-          <span className="summary-note">Srodki dostepne do nowych wejsc.</span>
-        </div>
-        <div className="card summary-card">
-          <p className="muted">Used margin</p>
-          <h2>{formatPln(portfolio.usedMargin, 2)}</h2>
-          <span className="summary-note">Kapital zaangazowany w pozycje.</span>
-        </div>
-        <div className="card summary-card">
-          <p className="muted">Open positions</p>
-          <h2>{stats.positionsCount}</h2>
-          <span className="summary-note">Aktywne ekspozycje do monitorowania.</span>
-        </div>
-        <div className="card summary-card">
-          <p className="muted">Recent realized P&L</p>
-          <h2 className={stats.realizedPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}>{formatPln(stats.realizedPnl, 2)}</h2>
-          <span className="summary-note">Suma z ostatnich 10 trade'ow.</span>
         </div>
       </div>
 
@@ -397,7 +415,21 @@ function Portfolio({ accountId, onAccountChange }) {
         {fundingError && <p className="error">{fundingError}</p>}
       </div>
 
-      <PositionList positions={portfolio.positions || []} showExposure showRealized={false} title="Pozycje otwarte" />
+      <PositionList
+        positions={portfolio.positions || []}
+        title="Pozycje otwarte"
+        accountMetrics={{
+          totalValue: stats.positionValue,
+          usedMargin: Number(portfolio.usedMargin || 0),
+          marginLevel: stats.marginLevel,
+          freeMargin: stats.freeMargin,
+          netProfit: stats.unrealizedPnl,
+        }}
+        editableRisk
+        onUpdateRisk={updatePositionRisk}
+        onClosePosition={closePosition}
+      />
+      {positionMessage && <p className="card success-text">{positionMessage}</p>}
 
       <div className="card">
         <div className="panel-head">
@@ -413,8 +445,8 @@ function Portfolio({ accountId, onAccountChange }) {
               <tr>
                 <th>Czas</th>
                 <th>Typ</th>
-                <th>Kwota (z�)</th>
-                <th>Saldo po (z�)</th>
+                <th>Kwota (PLN)</th>
+                <th>Saldo po (PLN)</th>
                 <th>Zrodlo</th>
                 <th>CorrelationId</th>
               </tr>
@@ -440,52 +472,7 @@ function Portfolio({ accountId, onAccountChange }) {
         </div>
       </div>
 
-      <div className="card">
-        <div className="panel-head">
-          <div>
-            <h3>Ostatnie transakcje</h3>
-            <p className="muted">Krotka historia wykonanych trade'ow z wynikiem i czasem wejscia.</p>
-          </div>
-          <span className="muted">{trades.length}</span>
-        </div>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Czas</th>
-                <th>Symbol</th>
-                <th>Side</th>
-                <th>Qty</th>
-                <th>Cena (USD)</th>
-                <th>P&amp;L (z�)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.recentTrades.length === 0 && (
-                <tr>
-                  <td colSpan={6}>Brak transakcji</td>
-                </tr>
-              )}
-              {stats.recentTrades.map((trade) => (
-                <tr key={trade.id}>
-                  <td>{formatDateTime(trade.executedAt)}</td>
-                  <td>
-                    <strong>{trade.symbol}</strong>
-                  </td>
-                  <td>
-                    <span className={`trade-side ${trade.side === 'BUY' ? 'buy' : 'sell'}`}>{trade.side}</span>
-                  </td>
-                  <td>{Number(trade.quantity).toFixed(2)}</td>
-                  <td>{formatUsd(trade.price, 4)}</td>
-                  <td className={Number(trade.realizedPnl) >= 0 ? 'pnl-positive' : 'pnl-negative'}>
-                    {formatPln(trade.realizedPnl, 2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <PositionList positions={recentTradeRows} title="Ostatnie transakcje" showAccountStrip={false} emptyLabel="Brak transakcji" />
 
       {loading && <p className="card">Ladowanie danych portfolio...</p>}
       {error && <p className="card error">{error}</p>}
@@ -494,4 +481,3 @@ function Portfolio({ accountId, onAccountChange }) {
 }
 
 export default Portfolio;
-  

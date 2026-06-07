@@ -1,2 +1,4 @@
 com\example\trading\service\MarginServiceTest.class
 com\example\trading\service\OrderServiceTest.class
+com\example\trading\service\PortfolioServiceTest.class
+com\example\trading\service\MarketDataServiceTest.class

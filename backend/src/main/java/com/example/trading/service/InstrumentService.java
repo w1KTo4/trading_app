@@ -5,6 +5,7 @@ import com.example.trading.dto.InstrumentDto;
 import com.example.trading.dto.PriceTickDto;
 import com.example.trading.entity.Instrument;
 import com.example.trading.entity.MarketPrice;
+import com.example.trading.marketdata.strategy.MarketDataProvider;
 import com.example.trading.repository.InstrumentRepository;
 import com.example.trading.repository.MarketPriceRepository;
 import org.springframework.data.domain.PageRequest;
@@ -19,24 +20,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Comparator;
-import java.util.Random;
-import java.time.Instant;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.Instant;
 
 @Service
 public class InstrumentService {
 
     private final InstrumentRepository instrumentRepository;
     private final MarketPriceRepository marketPriceRepository;
-    private final ExternalMarketDataService externalMarketDataService;
+    private final MarketDataProvider marketDataProvider;
 
     public InstrumentService(InstrumentRepository instrumentRepository,
                              MarketPriceRepository marketPriceRepository,
-                             ExternalMarketDataService externalMarketDataService) {
+                             MarketDataProvider marketDataProvider) {
         this.instrumentRepository = instrumentRepository;
         this.marketPriceRepository = marketPriceRepository;
-        this.externalMarketDataService = externalMarketDataService;
+        this.marketDataProvider = marketDataProvider;
     }
 
     @Transactional(readOnly = true)
@@ -74,18 +73,11 @@ public class InstrumentService {
 
         int bucketSeconds = resolveBucketSeconds(timeframe);
         int maxCandles = Math.min(Math.max(20, limit), 500);
-        int minimumCandles = Math.min(maxCandles, 80);
         String normalizedSymbol = symbol.toUpperCase(Locale.ROOT);
 
-        List<CandleDto> externalCandles = externalMarketDataService.fetchCandles(instrument, timeframe, limit);
+        List<CandleDto> externalCandles = marketDataProvider.fetchCandles(instrument, timeframe, limit);
         if (!externalCandles.isEmpty()) {
-            return ensureMinimumHistory(
-                    normalizedSymbol,
-                    trimAndSortCandles(externalCandles, maxCandles),
-                    minimumCandles,
-                    bucketSeconds,
-                    instrument.getLastPrice()
-            );
+            return trimAndSortCandles(externalCandles, maxCandles);
         }
 
         int rawLimit = Math.min(120000, Math.max(5000, bucketSeconds * maxCandles));
@@ -96,13 +88,7 @@ public class InstrumentService {
         );
 
         if (rows.isEmpty()) {
-            return ensureMinimumHistory(
-                    normalizedSymbol,
-                    List.of(),
-                    minimumCandles,
-                    bucketSeconds,
-                    instrument.getLastPrice()
-            );
+            return List.of();
         }
 
         Collections.reverse(rows);
@@ -126,13 +112,7 @@ public class InstrumentService {
             boundedCandles = candles.subList(candles.size() - maxCandles, candles.size());
         }
 
-        return ensureMinimumHistory(
-                normalizedSymbol,
-                boundedCandles,
-                minimumCandles,
-                bucketSeconds,
-                instrument.getLastPrice()
-        );
+        return boundedCandles;
     }
 
     @Transactional
@@ -207,120 +187,6 @@ public class InstrumentService {
         return sorted.subList(sorted.size() - maxCandles, sorted.size());
     }
 
-    private List<CandleDto> ensureMinimumHistory(String symbol,
-                                                 List<CandleDto> sourceCandles,
-                                                 int minimumCandles,
-                                                 int bucketSeconds,
-                                                 BigDecimal fallbackPrice) {
-        List<CandleDto> sortedCandles = trimAndSortCandles(sourceCandles, 500);
-        if (sortedCandles.size() >= minimumCandles) {
-            return sortedCandles;
-        }
-
-        int missingCandles = Math.max(0, minimumCandles - sortedCandles.size());
-        long randomSeed = (long) symbol.hashCode() * 31L + bucketSeconds;
-        Random random = new Random(randomSeed);
-
-        List<CandleDto> result = new ArrayList<>(minimumCandles);
-        if (sortedCandles.isEmpty()) {
-            result.addAll(buildSyntheticTimeline(minimumCandles, bucketSeconds, fallbackPrice, random));
-            return result;
-        }
-
-        CandleDto firstRealCandle = sortedCandles.get(0);
-        result.addAll(buildSyntheticPrefix(firstRealCandle, missingCandles, bucketSeconds, random));
-        result.addAll(sortedCandles);
-        return result;
-    }
-
-    private List<CandleDto> buildSyntheticTimeline(int candlesCount,
-                                                   int bucketSeconds,
-                                                   BigDecimal fallbackPrice,
-                                                   Random random) {
-        List<CandleDto> generated = new ArrayList<>(candlesCount);
-        BigDecimal currentOpen = sanitizePrice(fallbackPrice);
-        Instant start = Instant.now().minusSeconds((long) bucketSeconds * (candlesCount - 1L));
-
-        for (int i = 0; i < candlesCount; i++) {
-            Instant candleTime = start.plusSeconds((long) bucketSeconds * i);
-            BigDecimal close = evolvePrice(currentOpen, random);
-            generated.add(buildCandle(candleTime, currentOpen, close, random));
-            currentOpen = close;
-        }
-
-        return generated;
-    }
-
-    private List<CandleDto> buildSyntheticPrefix(CandleDto firstCandle,
-                                                 int missingCandles,
-                                                 int bucketSeconds,
-                                                 Random random) {
-        if (missingCandles <= 0) {
-            return List.of();
-        }
-
-        List<CandleDto> prefix = new ArrayList<>(missingCandles);
-        BigDecimal nextOpen = sanitizePrice(firstCandle.getOpen());
-
-        for (int offset = missingCandles; offset >= 1; offset--) {
-            Instant candleTime = firstCandle.getTime().minusSeconds((long) bucketSeconds * offset);
-            BigDecimal open = evolveBackwardOpen(nextOpen, random);
-            BigDecimal close = nextOpen;
-            prefix.add(buildCandle(candleTime, open, close, random));
-            nextOpen = open;
-        }
-
-        return prefix;
-    }
-
-    private CandleDto buildCandle(Instant time, BigDecimal open, BigDecimal close, Random random) {
-        BigDecimal normalizedOpen = sanitizePrice(open);
-        BigDecimal normalizedClose = sanitizePrice(close);
-
-        double wickUp = 0.0005d + random.nextDouble() * 0.0025d;
-        double wickDown = 0.0005d + random.nextDouble() * 0.0025d;
-
-        BigDecimal highBase = normalizedOpen.max(normalizedClose);
-        BigDecimal lowBase = normalizedOpen.min(normalizedClose);
-
-        BigDecimal high = normalizePrice(highBase.multiply(BigDecimal.ONE.add(BigDecimal.valueOf(wickUp))));
-        BigDecimal low = normalizePrice(lowBase.multiply(BigDecimal.ONE.subtract(BigDecimal.valueOf(wickDown))));
-
-        if (low.compareTo(BigDecimal.ZERO) <= 0) {
-            low = normalizePrice(lowBase.multiply(new BigDecimal("0.98")));
-        }
-        if (high.compareTo(normalizedOpen) < 0) {
-            high = normalizedOpen;
-        }
-        if (high.compareTo(normalizedClose) < 0) {
-            high = normalizedClose;
-        }
-        if (low.compareTo(normalizedOpen) > 0) {
-            low = normalizedOpen;
-        }
-        if (low.compareTo(normalizedClose) > 0) {
-            low = normalizedClose;
-        }
-
-        return new CandleDto(time, normalizedOpen, high, low, normalizedClose);
-    }
-
-    private BigDecimal evolvePrice(BigDecimal open, Random random) {
-        double shock = clamp(random.nextGaussian() * 0.0022d, -0.03d, 0.03d);
-        BigDecimal close = sanitizePrice(open).multiply(BigDecimal.ONE.add(BigDecimal.valueOf(shock)));
-        return sanitizePrice(close);
-    }
-
-    private BigDecimal evolveBackwardOpen(BigDecimal nextOpen, Random random) {
-        double drift = clamp(random.nextGaussian() * 0.0022d, -0.03d, 0.03d);
-        double denominator = 1.0d + drift;
-        if (denominator < 0.05d) {
-            denominator = 0.05d;
-        }
-        BigDecimal open = sanitizePrice(nextOpen).divide(BigDecimal.valueOf(denominator), 6, RoundingMode.HALF_UP);
-        return sanitizePrice(open);
-    }
-
     private boolean isCandleUsable(CandleDto candle) {
         return candle != null
                 && candle.getTime() != null
@@ -328,21 +194,6 @@ public class InstrumentService {
                 && candle.getHigh() != null
                 && candle.getLow() != null
                 && candle.getClose() != null;
-    }
-
-    private BigDecimal sanitizePrice(BigDecimal price) {
-        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ONE.setScale(6, RoundingMode.HALF_UP);
-        }
-        return normalizePrice(price);
-    }
-
-    private BigDecimal normalizePrice(BigDecimal price) {
-        return price.setScale(6, RoundingMode.HALF_UP);
-    }
-
-    private double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     private static class CandleAccumulator {

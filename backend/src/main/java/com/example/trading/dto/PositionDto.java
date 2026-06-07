@@ -14,4 +14,6 @@ public class PositionDto {
     private BigDecimal currentPrice;
     private BigDecimal unrealizedPnl;
     private BigDecimal realizedPnl;
+    private BigDecimal takeProfit;
+    private BigDecimal stopLoss;
 }

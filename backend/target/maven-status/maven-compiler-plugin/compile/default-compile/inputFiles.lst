@@ -23,6 +23,7 @@ C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\tra
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\OrderResponseDto.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\PaymentRequestDto.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\PositionDto.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\PositionRiskUpdateRequest.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\PriceTickDto.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\RegisterRequest.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\dto\TradeResponseDto.java
@@ -48,6 +49,11 @@ C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\tra
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\entity\UserRole.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\entity\WalletTransaction.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\entity\WalletTransactionType.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\facade\TradingFacade.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\marketdata\adapter\BinanceMarketDataAdapter.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\marketdata\strategy\MarketDataProvider.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\notification\observer\TradingEventPublisher.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\notification\observer\WebSocketTradingEventPublisher.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\repository\AccountRepository.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\repository\InstrumentRepository.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\repository\MarketPriceRepository.java
@@ -58,13 +64,11 @@ C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\tra
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\repository\UserRepository.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\repository\WalletTransactionRepository.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\AuthService.java
-C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\BinanceMarketDataService.java
-C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\ExternalMarketDataService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\FundingService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\InstrumentService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\MarginService.java
+C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\MarketDataService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\MarketFocusRegistryService.java
-C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\MarketSimulatorService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\MatchingEngineService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\OrderService.java
 C:\Users\marru\OneDrive\Pulpit\trading_app\backend\src\main\java\com\example\trading\service\PortfolioService.java

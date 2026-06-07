@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { createChart, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineStyle } from 'lightweight-charts';
+
+const EMPTY_RISK_LINES = [];
 
 const toFallbackCandles = (points = []) =>
   points
@@ -29,10 +31,12 @@ function Chart({
   embedded = false,
   livePrice = 0,
   priceSource = 'SNAPSHOT',
+  riskLines = EMPTY_RISK_LINES,
 }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const priceLinesRef = useRef([]);
   const fitDoneRef = useRef(false);
 
   const preparedCandles = useMemo(() => {
@@ -78,6 +82,23 @@ function Chart({
         return 80;
     }
   }, [timeframe]);
+
+  const normalizedRiskLines = useMemo(
+    () =>
+      riskLines
+        .map((line) => {
+          const price = Number(line?.price);
+          if (!Number.isFinite(price) || price <= 0) {
+            return null;
+          }
+          return {
+            type: line?.type === 'TP' ? 'TP' : 'SL',
+            price,
+          };
+        })
+        .filter(Boolean),
+    [riskLines],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -139,6 +160,7 @@ function Chart({
 
     return () => {
       resizeObserver.disconnect();
+      priceLinesRef.current = [];
       seriesRef.current = null;
       chartRef.current = null;
       chart.remove();
@@ -162,9 +184,74 @@ function Chart({
     }
   }, [preparedCandles, visibleBars]);
 
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) {
+      return;
+    }
+
+    const riskPrices = normalizedRiskLines.map((line) => line.price);
+    series.applyOptions({
+      autoscaleInfoProvider: (original) => {
+        const base = original();
+        if (riskPrices.length === 0) {
+          return base;
+        }
+
+        const minRisk = Math.min(...riskPrices);
+        const maxRisk = Math.max(...riskPrices);
+        const baseRange = base?.priceRange;
+        let minValue = baseRange ? Math.min(baseRange.minValue, minRisk) : minRisk;
+        let maxValue = baseRange ? Math.max(baseRange.maxValue, maxRisk) : maxRisk;
+
+        if (minValue === maxValue) {
+          const padding = Math.max(Math.abs(minValue) * 0.002, 0.0001);
+          minValue -= padding;
+          maxValue += padding;
+        }
+
+        return {
+          priceRange: { minValue, maxValue },
+          margins: {
+            above: Math.max(base?.margins?.above ?? 0, 18),
+            below: Math.max(base?.margins?.below ?? 0, 18),
+          },
+        };
+      },
+    });
+
+    priceLinesRef.current.forEach((line) => series.removePriceLine(line));
+    priceLinesRef.current = normalizedRiskLines
+      .map((line) => {
+        const { price } = line;
+        const isTakeProfit = line.type === 'TP';
+        return series.createPriceLine({
+          price,
+          color: isTakeProfit ? '#22c55e' : '#ef4444',
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `${line.type} ${price.toFixed(4)}`,
+        });
+      })
+      .filter(Boolean);
+  }, [normalizedRiskLines, symbol, timeframe]);
+
   const content = (
     <div className="chart-wrap">
       <div ref={containerRef} className="chart-surface" />
+      {normalizedRiskLines.length > 0 && (
+        <div className="chart-risk-legend">
+          {normalizedRiskLines.map((line) => {
+            const { price } = line;
+            return (
+              <span key={`${line.type}-${price}`} className={`risk-line-chip ${line.type === 'TP' ? 'tp' : 'sl'}`}>
+                {line.type} ${price.toFixed(4)}
+              </span>
+            );
+          })}
+        </div>
+      )}
       {preparedCandles.length === 0 && <p className="chart-empty muted">Brak danych dla wybranego interwalu.</p>}
     </div>
   );
